@@ -509,11 +509,18 @@ function bucketKey(ts, minutes){
 function upsertM1(c, point){
   const arr = c.m1;
   const t = typeof point.t === 'string' ? point.t : new Date(point.t).toISOString();
-  const last = arr[arr.length-1];
-  if(last && last.t === t){
-    arr[arr.length-1] = { open:point.open, high:point.high, low:point.low, close:point.close, t };
+  // Search from the end for a matching timestamp (handles corrected/"updated" bars
+  // that amend an entry other than the very last one, not just the latest bar).
+  const LOOKBACK = 5;
+  let matchIdx = -1;
+  for(let i = arr.length - 1; i >= 0 && i >= arr.length - LOOKBACK; i--){
+    if(arr[i].t === t){ matchIdx = i; break; }
+  }
+  if(matchIdx !== -1){
+    arr[matchIdx] = { open:point.open, high:point.high, low:point.low, close:point.close, t };
   } else {
     arr.push({ open:point.open, high:point.high, low:point.low, close:point.close, t });
+    arr.sort((a,b)=> new Date(a.t) - new Date(b.t));
     while(arr.length > MAX_M1) arr.shift();
   }
 }
@@ -766,7 +773,15 @@ async function placeTrade(symbol, side){
 async function closeAllPositions(){
   try{
     const res = await fetch(`${apiBase()}/v2/positions`, { method:'DELETE', headers: authHeaders() });
-    if(res.ok){ addMsg('Close-all requested.', 'bot'); openPositions = {}; updateStats(); }
+    if(res.ok){
+      addMsg('Close-all requested.', 'bot');
+      openPositions = {};
+      if(autoTrading){
+        setAuto(false);
+        addSystemMsg('Auto-trading paused after manual close-all — say "start autotrade" to resume.');
+      }
+      updateStats();
+    }
     else addMsg('Could not close positions.', 'bot');
   }catch(e){ addMsg('Close-all failed: ' + e.message, 'bot'); }
 }
@@ -801,6 +816,13 @@ async function pollAccountAndOrders(){
     });
     openPositions = stillOpen;
     updateStats();
+
+    // Safety net: don't wait for the next 5m bar close to react to a breached
+    // daily loss limit — catch it as soon as the account poll sees it.
+    if(autoTrading && dailyLossHit()){
+      addSystemMsg('Daily loss limit reached — auto halted.');
+      setAuto(false);
+    }
   }catch(e){}
 }
 
@@ -828,15 +850,24 @@ function updateTradeLogRowBySymbol(symbol, status){
 // ---------- CHAT ----------
 function ruleBasedParse(textRaw){
   const text = textRaw.toLowerCase().trim();
-  if(/^status/.test(text)) return { action:'status' };
-  if(/start.*auto|auto.*on|begin trading|go live trading/.test(text)) return { action:'auto_on' };
-  if(/^stop|auto.*off|pause/.test(text)) return { action:'auto_off' };
-  if(/close all|exit all|flatten/.test(text)) return { action:'close_all' };
-  const riskMatch = text.match(/risk\s*(?:to|at)?\s*(\d+(\.\d+)?)\s*%?/);
-  if(riskMatch && /risk/.test(text)) return { action:'set_risk', value:+riskMatch[1] };
+  const riskMatch = text.match(/risk\s*(?:to|at)?\s*(\d+(\.\d+)?)\s*%/);
   const limitMatch = text.match(/(?:daily )?loss limit\D*(\d+(\.\d+)?)/);
-  if(limitMatch) return { action:'set_limit', value:+limitMatch[1] };
   const thMatch = text.match(/threshold\D*(\d)/);
+
+  if(/^status/.test(text)) return { action:'status' };
+  if(/close all|exit all|flatten/.test(text)) return { action:'close_all' };
+  if(/^stop|auto.*off|pause/.test(text)) return { action:'auto_off' };
+
+  // "start autotrading with 1% risk" etc — apply any embedded risk/limit/threshold
+  // value *before* turning auto on, instead of silently dropping it.
+  if(/start.*auto|auto.*on|begin trading|go live trading/.test(text)){
+    if(riskMatch) return { action:'auto_on', extra:{ risk:+riskMatch[1] } };
+    if(limitMatch) return { action:'auto_on', extra:{ limit:+limitMatch[1] } };
+    if(thMatch) return { action:'auto_on', extra:{ threshold:+thMatch[1] } };
+    return { action:'auto_on' };
+  }
+  if(riskMatch) return { action:'set_risk', value:+riskMatch[1] };
+  if(limitMatch) return { action:'set_limit', value:+limitMatch[1] };
   if(thMatch) return { action:'set_threshold', value:+thMatch[1] };
   if(/help|what can you do|commands/.test(text)) return { action:'help' };
   return { action:'unknown' };
@@ -865,6 +896,13 @@ async function handleChatInput(text){
   executeAction(parsed, text);
 }
 function executeAction(parsed, originalText){
+  // Apply any embedded risk/limit/threshold value that rode along with an auto_on command.
+  if(parsed.action==='auto_on' && parsed.extra){
+    if(parsed.extra.risk){ riskState.riskPct=parsed.extra.risk; el('riskPct').value=parsed.extra.risk; }
+    if(parsed.extra.limit){ riskState.dailyLimit=parsed.extra.limit; el('dailyLimit').value=parsed.extra.limit; }
+    if(parsed.extra.threshold){ riskState.threshold=parsed.extra.threshold; el('threshold').value=parsed.extra.threshold; }
+    updateStats();
+  }
   switch(parsed.action){
     case 'status': {
       const lines = watchlist.map(sym=>{
