@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXA EQUITIES — Alpaca AI Trading Console</title>
+<title>NEXA EQUITIES — Alpaca AI Trading Console (fixed)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
   :root{
     --bg: #05080f;
@@ -22,7 +25,6 @@
     --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     --disp: 'Orbitron', var(--sans);
   }
-  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
   *{box-sizing:border-box; margin:0; padding:0;}
   html,body{height:100%;}
@@ -170,11 +172,12 @@
       <div class="core" id="coreIndicator"></div>
       <div>
         <h1>NEXA <span>EQUITIES</span></h1>
-        <div class="tag">CHAT-DRIVEN ALPACA EXECUTION ENGINE</div>
+        <div class="tag">CHAT-DRIVEN ALPACA EXECUTION ENGINE · FIXED BUILD</div>
       </div>
     </div>
     <div class="status-row">
       <div class="pill"><span class="dot off" id="connDot"></span><span id="connText">disconnected</span></div>
+      <div class="pill"><span class="dot off" id="wsDot"></span><span id="wsText">stream off</span></div>
       <div class="pill"><span class="dot off" id="marketDot"></span><span id="marketText">market unknown</span></div>
       <div class="pill">EQUITY <span id="balText" style="color:var(--cyan)">—</span></div>
       <div class="mode-toggle">
@@ -191,28 +194,34 @@
   <div class="setup">
     <div class="field">
       <label>ALPACA API KEY ID</label>
-      <input type="password" id="keyInput" placeholder="APCA-API-KEY-ID">
+      <input type="password" id="keyInput" placeholder="APCA-API-KEY-ID" autocomplete="off">
     </div>
     <div class="field">
       <label>ALPACA SECRET KEY</label>
-      <input type="password" id="secretInput" placeholder="APCA-API-SECRET-KEY">
+      <input type="password" id="secretInput" placeholder="APCA-API-SECRET-KEY" autocomplete="off">
     </div>
     <div class="field">
-      <label>GROQ API KEY (optional — smarter chat parsing)</label>
-      <input type="password" id="groqInput" placeholder="optional, for natural-language commands">
+      <label>GROQ API KEY (optional — smarter chat)</label>
+      <input type="password" id="groqInput" placeholder="optional" autocomplete="off">
     </div>
     <div class="field">
-      <label>WATCHLIST (comma-separated tickers)</label>
+      <label>WATCHLIST (comma-separated)</label>
       <input type="text" id="symbolInput" value="AAPL, NVDA, SPY">
+    </div>
+    <div class="field" style="grid-column:1/-1;">
+      <label>OPTIONAL CORS PROXY FOR HISTORICAL BARS (self-hosted recommended)</label>
+      <input type="text" id="proxyInput" placeholder="e.g. http://127.0.0.1:8787/?url=  — blank = live warm-up only">
     </div>
     <button class="connect-btn" id="connectBtn">CONNECT</button>
     <div class="warn-box">
-      ⚠ Starts on your PAPER trading account with AUTO OFF. Switching to LIVE or enabling AUTO in LIVE mode requires explicit confirmation — real orders on real funds will follow. Keys are used only in-browser to call Alpaca's API directly and are never stored, logged, or sent anywhere else. Auto-trading only fires during regular US market hours and only within your risk settings below. Nothing here is financial advice, and short selling requires a margin-enabled account.
+      ⚠ PAPER + AUTO OFF by default. LIVE / AUTO ON need explicit confirmation.
+      Alpaca Market Data REST still blocks browser CORS — history only loads if you supply a proxy that forwards APCA headers, or the bot warms up from the live IEX stream.
+      Keys stay in-browser memory only. Not financial advice. Long-only by default.
     </div>
   </div>
 
   <div class="stat-strip">
-    <div class="stat"><div class="k">SESSION P/L (open)</div><div class="v" id="pnlStat">$0.00</div></div>
+    <div class="stat"><div class="k">DAY P/L (portfolio)</div><div class="v" id="pnlStat">$0.00</div></div>
     <div class="stat"><div class="k">OPEN POSITIONS</div><div class="v" id="openStat">0</div></div>
     <div class="stat"><div class="k">TRADES TODAY</div><div class="v" id="tradesStat">0</div></div>
     <div class="stat"><div class="k">DAILY LOSS LIMIT</div><div class="v" id="limitStat">$0.00</div></div>
@@ -272,34 +281,38 @@
 
 <script>
 /* =========================================================================
-   NEXA EQUITIES
-   Chat-driven auto-execution engine for US equities via Alpaca's API.
-   Same triple-screen confluence approach as the Deriv build (RSI, MACD,
-   MA-cross, Stochastic across 5m + 15m bars), now with ATR-based bracket
-   orders (stop-loss + take-profit) sized off account equity, a daily loss
-   halt, and a chat command layer.
-
-   NOTE: long-only by default. Alpaca does support short selling on
-   margin-enabled accounts — flip ALLOW_SHORT below if you want that,
-   understanding shorting carries materially different risk (unlimited
-   downside, margin calls, borrow availability).
+   NEXA EQUITIES — FIXED BUILD (patched)
+   - Calendar-aligned 5m/15m from 1m stream
+   - WS reconnect + updatedBars
+   - Day P/L via Trading API portfolio/history
+   - Optional user CORS proxy for historical bootstrap
+   - Realistic warm-up, bucket-key 5m signals, ET day trade counter
    ========================================================================= */
 
 const ALLOW_SHORT = false;
+const MIN_BARS_5M = 20;
+const MIN_BARS_15M = 10; // ~2.5h of 15m; was effectively blocking on 20×15m
+const MAX_M1 = 400;
 
 let creds = { key:'', secret:'' };
-let mode = 'paper'; // 'paper' | 'live'
+let mode = 'paper';
 let autoTrading = false;
 let authorized = false;
 let watchlist = [];
-let candles = {};   // symbol -> {m5:[...], m15:[...], _m1buf:[...]}
-let scores = {};    // symbol -> {m5, m15, price, atr}
-let account = { equity:null, buying_power:null, currency:'USD' };
-let openPositions = {}; // symbol -> {qty, side, avg_entry_price}
-let sessionPnl = 0;
+let candles = {};
+let scores = {};
+let account = { equity:null, buying_power:null };
+let openPositions = {};
+let dayPnl = 0;
 let tradesToday = 0;
+let tradesDayKey = ''; // YYYY-MM-DD in America/New_York
 let marketOpen = false;
 let dataWs = null;
+let wsWanted = false;
+let wsRetry = 0;
+let lastWsMsgAt = 0;
+let corsProxy = '';
+let pollTimers = [];
 
 let riskState = { riskPct:1, dailyLimit:100, atrStop:1.5, atrTarget:2.5, threshold:3, maxPos:3, maxTrades:8 };
 
@@ -308,6 +321,22 @@ const chatLog = el('chatLog');
 
 function apiBase(){ return mode==='paper' ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'; }
 function authHeaders(){ return { 'APCA-API-KEY-ID': creds.key, 'APCA-API-SECRET-KEY': creds.secret, 'Content-Type':'application/json' }; }
+
+function etDayKey(d = new Date()){
+  try{
+    return new Intl.DateTimeFormat('en-CA', { timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit' }).format(d);
+  }catch(e){
+    return d.toISOString().slice(0,10);
+  }
+}
+function ensureTradeDay(){
+  const key = etDayKey();
+  if(key !== tradesDayKey){
+    tradesDayKey = key;
+    tradesToday = 0;
+    updateStats();
+  }
+}
 
 function addMsg(text, kind='bot'){
   const div = document.createElement('div');
@@ -329,15 +358,20 @@ function setConn(state){
   dot.className = 'dot ' + (state==='on'?'on':state==='warn'?'warn':'off');
   el('connText').textContent = state==='on' ? 'connected' : state==='warn' ? 'connecting…' : 'disconnected';
 }
+function setWs(state, label){
+  el('wsDot').className = 'dot ' + (state==='on'?'on':state==='warn'?'warn':'off');
+  el('wsText').textContent = label || (state==='on'?'stream on':state==='warn'?'stream…':'stream off');
+}
 function setMarketDot(open){
   el('marketDot').className = 'dot ' + (open ? 'on' : 'off');
   el('marketText').textContent = open ? 'market open' : 'market closed';
 }
 function updateModeIndicator(){ el('modeIndicator').textContent = `${mode.toUpperCase()} · AUTO ${autoTrading?'ON':'OFF'}`; }
 function updateStats(){
+  ensureTradeDay();
   const pnlEl = el('pnlStat');
-  pnlEl.textContent = (sessionPnl>=0?'+$':'-$') + Math.abs(sessionPnl).toFixed(2);
-  pnlEl.className = 'v ' + (sessionPnl>=0?'pos':'neg');
+  pnlEl.textContent = (dayPnl>=0?'+$':'-$') + Math.abs(dayPnl).toFixed(2);
+  pnlEl.className = 'v ' + (dayPnl>=0?'pos':'neg');
   el('openStat').textContent = Object.keys(openPositions).length;
   el('tradesStat').textContent = tradesToday;
   el('limitStat').textContent = '$' + riskState.dailyLimit.toFixed(2);
@@ -347,7 +381,7 @@ function updateStats(){
 // ---------- MODE TOGGLES ----------
 el('paperBtn').onclick = () => setMode('paper');
 el('liveBtn').onclick = () => {
-  if(!confirm('Switch to LIVE trading? Real funds on your Alpaca brokerage account will be used for any auto-executed trades. Continue?')) return;
+  if(!confirm('Switch to LIVE trading? Real funds will be used. Continue?')) return;
   setMode('live');
 };
 function setMode(m){
@@ -361,7 +395,7 @@ function setMode(m){
 el('autoOffBtn').onclick = () => setAuto(false);
 el('autoOnBtn').onclick = () => {
   if(!authorized){ addSystemMsg('Connect and authorize first.'); return; }
-  if(mode==='live' && !confirm('Enable LIVE auto-trading? The bot will place real market orders with bracket stops whenever confluence criteria are met, within your risk limits, during market hours. Continue?')) return;
+  if(mode==='live' && !confirm('Enable LIVE auto-trading? Real market + bracket orders will fire on confluence. Continue?')) return;
   setAuto(true);
 };
 function setAuto(on){
@@ -372,16 +406,24 @@ function setAuto(on){
   addSystemMsg(`Auto-trading ${on?'ENABLED':'disabled'}.`);
 }
 
+function clearPollTimers(){
+  pollTimers.forEach(clearInterval);
+  pollTimers = [];
+}
+
 // ---------- CONNECT ----------
 el('connectBtn').onclick = connect;
 async function connect(){
   creds.key = el('keyInput').value.trim();
   creds.secret = el('secretInput').value.trim();
-  if(!creds.key || !creds.secret){ addSystemMsg('Enter both your Alpaca API Key ID and Secret Key.'); return; }
+  corsProxy = el('proxyInput').value.trim();
+  if(!creds.key || !creds.secret){ addSystemMsg('Enter both Alpaca API Key ID and Secret Key.'); return; }
   watchlist = el('symbolInput').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
-  if(watchlist.length===0){ addSystemMsg('Enter at least one ticker in the watchlist.'); return; }
+  if(watchlist.length===0){ addSystemMsg('Enter at least one ticker.'); return; }
 
+  ensureTradeDay();
   setConn('warn');
+  clearPollTimers();
   try{
     const res = await fetch(`${apiBase()}/v2/account`, { headers: authHeaders() });
     if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
@@ -391,16 +433,20 @@ async function connect(){
     account.buying_power = acc.buying_power;
     setConn('on');
     updateStats();
-    addSystemMsg(`Authorized on ${mode.toUpperCase()} account. Equity $${(+acc.equity).toFixed(2)}.`);
-    addMsg(`Connected. I'm watching ${watchlist.join(', ')}. Say "start autotrade" when ready, or "status" anytime.`, 'bot');
+    addSystemMsg(`Authorized on ${mode.toUpperCase()}. Equity $${(+acc.equity).toFixed(2)}.`);
+    addMsg(`Connected. Watching ${watchlist.join(', ')}. Say "start autotrade" or "status".`, 'bot');
     await checkMarketClock();
     await Promise.all(watchlist.map(initSymbol));
+    await bootstrapHistory();
+    wsWanted = true;
     connectDataStream();
-    setInterval(pollAccountAndOrders, 20000);
-    setInterval(checkMarketClock, 60000);
+    pollTimers.push(setInterval(pollAccountAndOrders, 15000));
+    pollTimers.push(setInterval(checkMarketClock, 60000));
+    pollTimers.push(setInterval(wsWatchdog, 20000));
+    pollTimers.push(setInterval(ensureTradeDay, 60000));
   }catch(e){
     setConn('off'); authorized=false;
-    addSystemMsg('Authorization failed — check your API Key ID / Secret Key and that they match the selected PAPER/LIVE mode.');
+    addSystemMsg('Authorization failed — check keys and PAPER/LIVE match.');
   }
 }
 
@@ -410,73 +456,173 @@ async function checkMarketClock(){
     const clock = await res.json();
     marketOpen = !!clock.is_open;
     setMarketDot(marketOpen);
-  }catch(e){ /* non-fatal */ }
+  }catch(e){}
+}
+
+// ---------- HISTORY BOOTSTRAP ----------
+async function bootstrapHistory(){
+  if(!corsProxy){
+    addSystemMsg('No CORS proxy set — building bars from live stream (warm-up ~20×5m + 10×15m).');
+    return;
+  }
+  addSystemMsg('Bootstrapping 1m history via your CORS proxy…');
+  for(const symbol of watchlist){
+    try{
+      const target = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/bars?timeframe=1Min&limit=200&adjustment=raw&feed=iex`;
+      const url = corsProxy.includes('{url}')
+        ? corsProxy.replace('{url}', encodeURIComponent(target))
+        : corsProxy + encodeURIComponent(target);
+      const res = await fetch(url, { headers: authHeaders() });
+      if(!res.ok) throw new Error('HTTP '+res.status);
+      const data = await res.json();
+      const bars = data.bars || data[symbol] || [];
+      const list = Array.isArray(bars) ? bars : [];
+      const c = candles[symbol];
+      list.forEach(b=>{
+        upsertM1(c, { open:+b.o, high:+b.h, low:+b.l, close:+b.c, t: b.t });
+      });
+      rebuildHigherTFs(symbol);
+      recompute(symbol);
+      addSystemMsg(`${symbol}: seeded ${list.length}×1m bars.`);
+    }catch(e){
+      addSystemMsg(`${symbol}: history bootstrap failed (${e.message}) — will warm from stream.`);
+    }
+  }
 }
 
 // ---------- SYMBOL INIT ----------
-// NOTE: Alpaca's historical-bars endpoint (data.alpaca.markets) does not send
-// CORS headers on its preflight response, so direct browser fetches to it are
-// blocked by the browser itself (confirmed on Alpaca's own API issue tracker).
-// The trading endpoints (paper-api/api.alpaca.markets) DO support browser CORS,
-// which is why auth/orders work. Rather than route your API keys through a
-// third-party CORS proxy, this build skips REST history and builds candles
-// purely from the live WebSocket bar stream as the market prints them.
-const MIN_BARS_FOR_SIGNAL = 20; // shorter lookback so warm-up doesn't take hours
-
 async function initSymbol(symbol){
-  candles[symbol] = { m5: [], m15: [], _m1buf: [] };
+  candles[symbol] = { m1: [], m5: [], m15: [] };
   scores[symbol] = { m5:0, m15:0, price:null, atr:null, warming:true };
   renderScannerCard(symbol);
 }
 
-// ---------- LIVE DATA STREAM (1-min bars, aggregated to 5m/15m) ----------
+// ---------- TIME BUCKETS ----------
+function floorBucketMs(ts, minutes){
+  const ms = new Date(ts).getTime();
+  const step = minutes * 60 * 1000;
+  return Math.floor(ms / step) * step;
+}
+function bucketKey(ts, minutes){
+  return floorBucketMs(ts, minutes);
+}
+function upsertM1(c, point){
+  const arr = c.m1;
+  const t = typeof point.t === 'string' ? point.t : new Date(point.t).toISOString();
+  const last = arr[arr.length-1];
+  if(last && last.t === t){
+    arr[arr.length-1] = { open:point.open, high:point.high, low:point.low, close:point.close, t };
+  } else {
+    arr.push({ open:point.open, high:point.high, low:point.low, close:point.close, t });
+    while(arr.length > MAX_M1) arr.shift();
+  }
+}
+function aggregateFromM1(m1, minutes){
+  if(!m1.length) return [];
+  const map = new Map();
+  for(const b of m1){
+    const key = floorBucketMs(b.t, minutes);
+    let agg = map.get(key);
+    if(!agg){
+      map.set(key, { open:b.open, high:b.high, low:b.low, close:b.close, t: new Date(key).toISOString(), _key: key });
+    } else {
+      agg.high = Math.max(agg.high, b.high);
+      agg.low = Math.min(agg.low, b.low);
+      agg.close = b.close;
+    }
+  }
+  return Array.from(map.entries()).sort((a,b)=>a[0]-b[0]).map(([,v])=>v);
+}
+function rebuildHigherTFs(symbol){
+  const c = candles[symbol];
+  if(!c) return;
+  c.m5 = aggregateFromM1(c.m1, 5);
+  c.m15 = aggregateFromM1(c.m1, 15);
+  if(c.m5.length > 150) c.m5 = c.m5.slice(-150);
+  if(c.m15.length > 150) c.m15 = c.m15.slice(-150);
+}
+
+// ---------- LIVE DATA STREAM ----------
 function connectDataStream(){
-  if(dataWs) try{ dataWs.close(); }catch(e){}
+  if(dataWs){ try{ dataWs.onclose=null; dataWs.close(); }catch(e){} }
+  setWs('warn', 'stream…');
   dataWs = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
   dataWs.onopen = () => {
     dataWs.send(JSON.stringify({ action:'auth', key:creds.key, secret:creds.secret }));
   };
   dataWs.onmessage = (evt) => {
-    const msgs = JSON.parse(evt.data);
+    lastWsMsgAt = Date.now();
+    let msgs;
+    try{ msgs = JSON.parse(evt.data); }catch(e){ return; }
     (Array.isArray(msgs)?msgs:[msgs]).forEach(handleStreamMsg);
   };
-  dataWs.onerror = () => addSystemMsg('Market data stream error.');
+  dataWs.onerror = () => setWs('off', 'stream error');
+  dataWs.onclose = () => {
+    setWs('off', 'stream closed');
+    if(wsWanted) scheduleWsReconnect();
+  };
+}
+function scheduleWsReconnect(){
+  wsRetry = Math.min(wsRetry + 1, 8);
+  const wait = Math.min(30000, 1000 * Math.pow(2, wsRetry-1));
+  setWs('warn', `reconnect ${Math.round(wait/1000)}s`);
+  setTimeout(()=>{ if(wsWanted) connectDataStream(); }, wait);
+}
+function wsWatchdog(){
+  if(!wsWanted || !dataWs) return;
+  if(dataWs.readyState === WebSocket.OPEN && lastWsMsgAt && Date.now()-lastWsMsgAt > 120000){
+    addSystemMsg('Stream quiet >2m — forcing reconnect.');
+    try{ dataWs.close(); }catch(e){}
+  }
 }
 function handleStreamMsg(msg){
   if(msg.T==='success' && msg.msg==='authenticated'){
-    dataWs.send(JSON.stringify({ action:'subscribe', bars: watchlist }));
-  } else if(msg.T==='b'){ // 1-min bar
-    onMinuteBar(msg);
+    wsRetry = 0;
+    setWs('on', 'stream on');
+    dataWs.send(JSON.stringify({ action:'subscribe', bars: watchlist, updatedBars: watchlist }));
+  } else if(msg.T==='subscription'){
+    setWs('on', 'stream on');
+  } else if(msg.T==='error'){
+    addSystemMsg(`Stream error ${msg.code||''}: ${msg.msg||''}`);
+  } else if(msg.T==='b' || msg.T==='u'){
+    onMinuteBar(msg, msg.T==='u');
   }
 }
-function onMinuteBar(bar){
+function onMinuteBar(bar, isUpdate){
   const symbol = bar.S;
   const c = candles[symbol];
   if(!c) return;
   const point = { open:bar.o, high:bar.h, low:bar.l, close:bar.c, t:bar.t };
   scores[symbol].price = bar.c;
-  c._m1buf.push(point);
-  if(c._m1buf.length >= 5){ pushAggBar(c, c._m1buf.slice(-5), 'm5'); }
-  if(c._m1buf.length >= 15){ pushAggBar(c, c._m1buf.slice(-15), 'm15'); c._m1buf = c._m1buf.slice(-15); }
+
+  const prevKey = c.m5.length ? bucketKey(c.m5[c.m5.length-1].t, 5) : null;
+
+  upsertM1(c, point);
+  rebuildHigherTFs(symbol);
   recompute(symbol);
-  if(c._m1buf.length % 5 === 0) maybeAutoTrade(symbol);
-}
-function pushAggBar(c, chunk, tf){
-  const agg = {
-    open:chunk[0].open, close:chunk[chunk.length-1].close,
-    high:Math.max(...chunk.map(x=>x.high)), low:Math.min(...chunk.map(x=>x.low)), t:chunk[chunk.length-1].t
-  };
-  const arr = c[tf];
-  if(arr.length && arr[arr.length-1].t===agg.t){ arr[arr.length-1]=agg; } else { arr.push(agg); if(arr.length>150) arr.shift(); }
+
+  const newKey = c.m5.length ? bucketKey(c.m5[c.m5.length-1].t, 5) : null;
+  // New 5m bucket started ⇒ previous 5m bar is complete
+  const completedNew5m = !isUpdate && prevKey != null && newKey != null && newKey !== prevKey;
+  if(completedNew5m) maybeAutoTrade(symbol);
 }
 
-// ---------- INDICATOR ENGINE ----------
+// ---------- INDICATORS ----------
 function sma(arr,n){ if(arr.length<n) return null; return arr.slice(-n).reduce((a,b)=>a+b,0)/n; }
-function ema(arr,n){ if(arr.length<n) return null; const k=2/(n+1); let e=arr.slice(0,n).reduce((a,b)=>a+b,0)/n; for(let i=n;i<arr.length;i++) e=arr[i]*k+e*(1-k); return e; }
+function ema(arr,n){
+  if(arr.length<n) return null;
+  const k=2/(n+1);
+  let e=arr.slice(0,n).reduce((a,b)=>a+b,0)/n;
+  for(let i=n;i<arr.length;i++) e=arr[i]*k+e*(1-k);
+  return e;
+}
 function rsi(closes,n=9){
   if(closes.length<n+1) return null;
   let gains=0, losses=0;
-  for(let i=closes.length-n;i<closes.length;i++){ const d=closes[i]-closes[i-1]; if(d>=0) gains+=d; else losses-=d; }
+  for(let i=closes.length-n;i<closes.length;i++){
+    const d=closes[i]-closes[i-1];
+    if(d>=0) gains+=d; else losses-=d;
+  }
   const avgGain=gains/n, avgLoss=losses/n;
   if(avgLoss===0) return 100;
   return 100-(100/(1+avgGain/avgLoss));
@@ -489,14 +635,14 @@ function stochastic(bars,n=9){
   if(hi===lo) return 50;
   return ((close-lo)/(hi-lo))*100;
 }
-function macdSignal(closes, fastN=6, slowN=13, sigN=5){
+function macdHist(closes, fastN=6, slowN=13, sigN=5){
   if(closes.length<slowN+sigN) return null;
-  const emaFastArr=[], emaSlowArr=[];
-  for(let i=fastN;i<=closes.length;i++) emaFastArr.push(ema(closes.slice(0,i),fastN));
-  for(let i=slowN;i<=closes.length;i++) emaSlowArr.push(ema(closes.slice(0,i),slowN));
-  const len=Math.min(emaFastArr.length, emaSlowArr.length);
   const macdLine=[];
-  for(let i=0;i<len;i++) macdLine.push(emaFastArr[emaFastArr.length-len+i]-emaSlowArr[emaSlowArr.length-len+i]);
+  for(let i=slowN;i<=closes.length;i++){
+    const slice=closes.slice(0,i);
+    const ef=ema(slice,fastN), es=ema(slice,slowN);
+    if(ef!==null && es!==null) macdLine.push(ef-es);
+  }
   if(macdLine.length<sigN) return null;
   const signal=ema(macdLine,sigN);
   return macdLine[macdLine.length-1]-signal;
@@ -510,12 +656,12 @@ function atr(bars,n=9){
   }
   return trs.reduce((a,b)=>a+b,0)/n;
 }
-function scoreTimeframe(bars){
-  if(bars.length<MIN_BARS_FOR_SIGNAL) return 0;
+function scoreTimeframe(bars, minBars){
+  if(bars.length<minBars) return 0;
   const closes=bars.map(b=>b.close);
   let score=0;
   const r=rsi(closes); if(r!==null){ if(r<30) score++; else if(r>70) score--; }
-  const hist=macdSignal(closes); if(hist!==null){ if(hist>0) score++; else if(hist<0) score--; }
+  const hist=macdHist(closes); if(hist!==null){ if(hist>0) score++; else if(hist<0) score--; }
   const maFast=sma(closes,8), maSlow=sma(closes,20);
   if(maFast!==null && maSlow!==null){ if(maFast>maSlow) score++; else if(maFast<maSlow) score--; }
   const st=stochastic(bars); if(st!==null){ if(st<20) score++; else if(st>80) score--; }
@@ -523,30 +669,30 @@ function scoreTimeframe(bars){
 }
 function recompute(symbol){
   const c=candles[symbol]; if(!c) return;
-  scores[symbol].warming = c.m5.length < MIN_BARS_FOR_SIGNAL || c.m15.length < MIN_BARS_FOR_SIGNAL;
-  scores[symbol].m5=scoreTimeframe(c.m5);
-  scores[symbol].m15=scoreTimeframe(c.m15);
+  scores[symbol].warming = c.m5.length < MIN_BARS_5M || c.m15.length < MIN_BARS_15M;
+  scores[symbol].m5 = scoreTimeframe(c.m5, MIN_BARS_5M);
+  scores[symbol].m15 = scoreTimeframe(c.m15, MIN_BARS_15M);
   scores[symbol].atr = atr(c.m5.length>=10?c.m5:c.m15) || null;
   if(c.m5.length) scores[symbol].price=c.m5[c.m5.length-1].close;
   renderScannerCard(symbol);
 }
 
-// ---------- SCANNER RENDER ----------
+// ---------- SCANNER ----------
 function barColor(v){ return v>0?'var(--green)':v<0?'var(--red)':'var(--muted)'; }
 function barWidth(v){ return Math.min(100, Math.abs(v)/4*100)+'%'; }
 function renderScannerCard(symbol){
   let card=document.getElementById('sym-'+symbol);
   if(!card){ card=document.createElement('div'); card.className='sym-card'; card.id='sym-'+symbol; el('scannerBody').appendChild(card); }
   const s=scores[symbol];
+  const c = candles[symbol] || {m5:[],m15:[]};
   const aligned = s.m5!==0 && Math.sign(s.m5)===Math.sign(s.m15);
   const strong = Math.abs(s.m5)>=riskState.threshold && Math.abs(s.m15)>=Math.max(2,riskState.threshold-1);
-  const c = candles[symbol] || {m5:[],m15:[]};
   let verdictClass='wait', verdictText = s.warming
-    ? `WARMING UP (${Math.min(c.m5.length,MIN_BARS_FOR_SIGNAL)}/${MIN_BARS_FOR_SIGNAL} 5m bars)`
+    ? `WARMING UP (5m ${Math.min(c.m5.length,MIN_BARS_5M)}/${MIN_BARS_5M} · 15m ${Math.min(c.m15.length,MIN_BARS_15M)}/${MIN_BARS_15M})`
     : 'SCANNING…';
   if(!s.warming && aligned && strong){
     if(s.m5>0){ verdictClass='buy'; verdictText='LONG CONFLUENCE'; }
-    else { verdictClass = ALLOW_SHORT ? 'sell' : 'wait'; verdictText = ALLOW_SHORT ? 'SHORT CONFLUENCE' : 'SHORT SIGNAL (long-only mode)'; }
+    else { verdictClass = ALLOW_SHORT ? 'sell' : 'wait'; verdictText = ALLOW_SHORT ? 'SHORT CONFLUENCE' : 'SHORT SIGNAL (long-only)'; }
   }
   card.innerHTML = `
     <div class="sym-top"><div class="sym-name">${symbol}</div><div class="sym-price">${s.price?('$'+s.price.toFixed(2)):'—'}</div></div>
@@ -556,31 +702,33 @@ function renderScannerCard(symbol){
   `;
 }
 
-// ---------- AUTO-TRADE LOGIC ----------
-function dailyLossHit(){ return sessionPnl <= -Math.abs(riskState.dailyLimit); }
+// ---------- AUTO-TRADE ----------
+function dailyLossHit(){ return dayPnl <= -Math.abs(riskState.dailyLimit); }
 
 function maybeAutoTrade(symbol){
+  ensureTradeDay();
   if(!autoTrading || !authorized) return;
-  if(!marketOpen){ return; }
-  if(dailyLossHit()){ addSystemMsg('Daily loss limit reached — auto-trading halted for today.'); setAuto(false); return; }
+  if(!marketOpen) return;
+  if(dailyLossHit()){ addSystemMsg('Daily loss limit reached — auto halted.'); setAuto(false); return; }
   if(tradesToday >= riskState.maxTrades) return;
   if(Object.keys(openPositions).length >= riskState.maxPos) return;
   if(openPositions[symbol]) return;
 
   const s = scores[symbol];
-  if(s.warming) return;
+  if(s.warming || !s.atr || !s.price) return;
   const aligned = s.m5!==0 && Math.sign(s.m5)===Math.sign(s.m15);
   const strong = Math.abs(s.m5)>=riskState.threshold && Math.abs(s.m15)>=Math.max(2,riskState.threshold-1);
-  if(!aligned || !strong || !s.atr || !s.price) return;
+  if(!aligned || !strong) return;
 
   if(s.m5>0) placeTrade(symbol, 'buy');
   else if(ALLOW_SHORT) placeTrade(symbol, 'sell');
 }
 
 async function placeTrade(symbol, side){
+  ensureTradeDay();
   const s = scores[symbol];
   const equity = +account.equity || 0;
-  if(equity<=0){ addSystemMsg('No equity data — cannot size trade.'); return; }
+  if(equity<=0){ addSystemMsg('No equity — cannot size.'); return; }
   const dollarRisk = equity * (riskState.riskPct/100);
   const stopDist = s.atr * riskState.atrStop;
   if(!stopDist || stopDist<=0) return;
@@ -603,55 +751,57 @@ async function placeTrade(symbol, side){
     });
     const order = await res.json();
     setThinking(false);
-    if(!res.ok){ addSystemMsg(`Order rejected for ${symbol}: ${order.message||res.status}`); return; }
+    if(!res.ok){ addSystemMsg(`Order rejected ${symbol}: ${order.message||res.status}`); return; }
     openPositions[symbol] = { qty, side, entry: price, order_id: order.id };
     tradesToday++;
     addTradeLogRow({time:new Date().toLocaleTimeString(), symbol, side, qty, status:'SUBMITTED', order_id: order.id});
-    addSystemMsg(`${side.toUpperCase()} ${qty} ${symbol} @ ~$${price.toFixed(2)} · stop $${stopPrice} · target $${targetPrice}`);
+    addSystemMsg(`${side.toUpperCase()} ${qty} ${symbol} ~$${price.toFixed(2)} · SL $${stopPrice} · TP $${targetPrice}`);
     updateStats();
   }catch(e){
     setThinking(false);
-    addSystemMsg(`Order error for ${symbol}: ${e.message}`);
+    addSystemMsg(`Order error ${symbol}: ${e.message}`);
   }
 }
 
 async function closeAllPositions(){
   try{
     const res = await fetch(`${apiBase()}/v2/positions`, { method:'DELETE', headers: authHeaders() });
-    if(res.ok){ addMsg('Requested close on all open positions.', 'bot'); openPositions = {}; updateStats(); }
-    else addMsg('Could not close positions — check connection.', 'bot');
-  }catch(e){ addMsg('Close-all request failed: ' + e.message, 'bot'); }
+    if(res.ok){ addMsg('Close-all requested.', 'bot'); openPositions = {}; updateStats(); }
+    else addMsg('Could not close positions.', 'bot');
+  }catch(e){ addMsg('Close-all failed: ' + e.message, 'bot'); }
 }
 
-// ---------- POLL ACCOUNT / ORDERS / POSITIONS ----------
+// ---------- POLL ----------
 async function pollAccountAndOrders(){
   if(!authorized) return;
+  ensureTradeDay();
   try{
-    const [accRes, posRes] = await Promise.all([
+    const [accRes, posRes, histRes] = await Promise.all([
       fetch(`${apiBase()}/v2/account`, { headers: authHeaders() }),
-      fetch(`${apiBase()}/v2/positions`, { headers: authHeaders() })
+      fetch(`${apiBase()}/v2/positions`, { headers: authHeaders() }),
+      fetch(`${apiBase()}/v2/account/portfolio/history?period=1D&timeframe=15Min`, { headers: authHeaders() })
     ]);
     const acc = await accRes.json();
     const positions = await posRes.json();
     account.equity = acc.equity;
     account.buying_power = acc.buying_power;
 
-    let unrealized = 0;
+    if(histRes.ok){
+      const hist = await histRes.json();
+      const pl = hist.profit_loss;
+      if(Array.isArray(pl) && pl.length) dayPnl = +pl[pl.length-1] || 0;
+    }
+
     const stillOpen = {};
     (positions||[]).forEach(p=>{
-      unrealized += +p.unrealized_pl;
       stillOpen[p.symbol] = { qty:+p.qty, side: p.side, entry:+p.avg_entry_price };
     });
-    // detect closed positions -> update log + realized pnl estimate
     Object.keys(openPositions).forEach(sym=>{
-      if(!stillOpen[sym]){
-        updateTradeLogRowBySymbol(sym, 'CLOSED');
-      }
+      if(!stillOpen[sym]) updateTradeLogRowBySymbol(sym, 'CLOSED');
     });
     openPositions = stillOpen;
-    sessionPnl = unrealized;
     updateStats();
-  }catch(e){ /* non-fatal, will retry */ }
+  }catch(e){}
 }
 
 // ---------- TRADE LOG ----------
@@ -675,7 +825,7 @@ function updateTradeLogRowBySymbol(symbol, status){
   el(id).addEventListener('change', e=>{ riskState[id]=+e.target.value; updateStats(); });
 });
 
-// ---------- CHAT PARSER ----------
+// ---------- CHAT ----------
 function ruleBasedParse(textRaw){
   const text = textRaw.toLowerCase().trim();
   if(/^status/.test(text)) return { action:'status' };
@@ -717,23 +867,26 @@ async function handleChatInput(text){
 function executeAction(parsed, originalText){
   switch(parsed.action){
     case 'status': {
-      const lines = watchlist.map(sym=>{ const s=scores[sym]; return `${sym}: 5m ${s.m5>=0?'+':''}${s.m5} / 15m ${s.m15>=0?'+':''}${s.m15}${s.price?' @ $'+s.price.toFixed(2):''}`; });
-      addMsg(`Mode: ${mode.toUpperCase()} · Auto: ${autoTrading?'ON':'OFF'} · ${marketOpen?'Market OPEN':'Market CLOSED'}\nEquity: ${account.equity?'$'+(+account.equity).toFixed(2):'—'}\nUnrealized P/L: ${sessionPnl>=0?'+':''}${sessionPnl.toFixed(2)}\nOpen positions: ${Object.keys(openPositions).length}\nTrades today: ${tradesToday}/${riskState.maxTrades}\n\n${lines.join('\n')}`, 'bot');
+      const lines = watchlist.map(sym=>{
+        const s=scores[sym]; const c=candles[sym];
+        return `${sym}: 5m ${s.m5>=0?'+':''}${s.m5} / 15m ${s.m15>=0?'+':''}${s.m15}${s.price?' @ $'+s.price.toFixed(2):''} (${c?c.m5.length:0}×5m, ${c?c.m15.length:0}×15m)`;
+      });
+      addMsg(`Mode: ${mode.toUpperCase()} · Auto: ${autoTrading?'ON':'OFF'} · ${marketOpen?'Market OPEN':'Market CLOSED'}\nEquity: ${account.equity?'$'+(+account.equity).toFixed(2):'—'}\nDay P/L: ${dayPnl>=0?'+':''}${dayPnl.toFixed(2)}\nOpen: ${Object.keys(openPositions).length}\nTrades today (ET): ${tradesToday}/${riskState.maxTrades}\n\n${lines.join('\n')}`, 'bot');
       break;
     }
     case 'auto_on':
-      if(!authorized){ addMsg('Connect with your Alpaca keys first.', 'bot'); break; }
-      if(mode==='live'){ addMsg("You're in LIVE mode — use the LIVE/AUTO ON toggle above so you get the confirmation prompt for real-money trading.", 'bot'); break; }
+      if(!authorized){ addMsg('Connect with Alpaca keys first.', 'bot'); break; }
+      if(mode==='live'){ addMsg("LIVE mode — use the LIVE/AUTO ON toggle for the real-money confirmation.", 'bot'); break; }
       setAuto(true);
-      addMsg(`Auto-trading is ON in PAPER mode. I'll trade ${watchlist.join(', ')} when 5m/15m confluence hits ±${riskState.threshold} during market hours, risking ${riskState.riskPct}% per trade with a ${riskState.atrStop}×ATR stop.`, 'bot');
+      addMsg(`Auto ON (PAPER). Confluence ±${riskState.threshold}, risk ${riskState.riskPct}%, stop ${riskState.atrStop}×ATR.`, 'bot');
       break;
-    case 'auto_off': setAuto(false); addMsg("Auto-trading is OFF. Open positions stay open unless you say 'close all'.", 'bot'); break;
+    case 'auto_off': setAuto(false); addMsg("Auto OFF. Open positions stay unless you say 'close all'.", 'bot'); break;
     case 'close_all': closeAllPositions(); break;
-    case 'set_risk': if(parsed.value){ riskState.riskPct=parsed.value; el('riskPct').value=parsed.value; addMsg(`Risk per trade set to ${parsed.value}%.`,'bot'); } break;
-    case 'set_limit': if(parsed.value){ riskState.dailyLimit=parsed.value; el('dailyLimit').value=parsed.value; updateStats(); addMsg(`Daily loss limit set to $${parsed.value}.`,'bot'); } break;
-    case 'set_threshold': if(parsed.value){ riskState.threshold=parsed.value; el('threshold').value=parsed.value; addMsg(`Confluence threshold set to ${parsed.value}.`,'bot'); } break;
-    case 'help': addMsg(`I can: report "status", "start autotrade", "stop", "close all", "set risk to X%", "set daily loss limit $X", "set threshold X". I only trade long, only during market hours, and only within your risk settings.`,'bot'); break;
-    default: addMsg(`I didn't catch a command in "${originalText}". Try "status", "start autotrade", "stop", or "close all" — or add a Groq API key above for freer phrasing.`,'bot');
+    case 'set_risk': if(parsed.value){ riskState.riskPct=parsed.value; el('riskPct').value=parsed.value; addMsg(`Risk set to ${parsed.value}%.`,'bot'); } break;
+    case 'set_limit': if(parsed.value){ riskState.dailyLimit=parsed.value; el('dailyLimit').value=parsed.value; updateStats(); addMsg(`Daily loss limit $${parsed.value}.`,'bot'); } break;
+    case 'set_threshold': if(parsed.value){ riskState.threshold=parsed.value; el('threshold').value=parsed.value; addMsg(`Threshold ${parsed.value}.`,'bot'); } break;
+    case 'help': addMsg(`Commands: status, start autotrade, stop, close all, set risk X%, set daily loss limit $X, set threshold X. Long-only, market hours only.`,'bot'); break;
+    default: addMsg(`No command in "${originalText}". Try status / start autotrade / stop / close all.`, 'bot');
   }
 }
 
@@ -742,9 +895,10 @@ el('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') el('sendBtn
 document.querySelectorAll('.chip').forEach(chip=>{ chip.addEventListener('click', ()=>{ el('chatInput').value=chip.dataset.cmd; el('sendBtn').click(); }); });
 
 // ---------- INIT ----------
+tradesDayKey = etDayKey();
 updateModeIndicator();
 updateStats();
-addMsg("I'm NEXA for equities. Paste your Alpaca API Key ID and Secret Key above, set your watchlist, and hit Connect. Alpaca's historical-data endpoint blocks direct browser requests (a CORS limitation on their side), so I build each symbol's 5m/15m history live from the market data stream — expect a short warm-up (roughly 20 bars per timeframe) before signals go live. I stay on PAPER and AUTO OFF until you tell me otherwise, and I only trade during regular market hours.", 'bot');
+addMsg("NEXA patched build. Connect with Alpaca keys. Leave the proxy blank to warm from the IEX stream (needs ~20×5m and ~10×15m bars), or use a self-hosted proxy that forwards APCA headers. PAPER + AUTO OFF until you say otherwise.", 'bot');
 </script>
 </body>
 </html>
