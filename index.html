@@ -413,25 +413,20 @@ async function checkMarketClock(){
   }catch(e){ /* non-fatal */ }
 }
 
-// ---------- HISTORICAL BARS ----------
+// ---------- SYMBOL INIT ----------
+// NOTE: Alpaca's historical-bars endpoint (data.alpaca.markets) does not send
+// CORS headers on its preflight response, so direct browser fetches to it are
+// blocked by the browser itself (confirmed on Alpaca's own API issue tracker).
+// The trading endpoints (paper-api/api.alpaca.markets) DO support browser CORS,
+// which is why auth/orders work. Rather than route your API keys through a
+// third-party CORS proxy, this build skips REST history and builds candles
+// purely from the live WebSocket bar stream as the market prints them.
+const MIN_BARS_FOR_SIGNAL = 20; // shorter lookback so warm-up doesn't take hours
+
 async function initSymbol(symbol){
   candles[symbol] = { m5: [], m15: [], _m1buf: [] };
-  scores[symbol] = { m5:0, m15:0, price:null, atr:null };
+  scores[symbol] = { m5:0, m15:0, price:null, atr:null, warming:true };
   renderScannerCard(symbol);
-  await fetchHistory(symbol, '5Min', 'm5');
-  await fetchHistory(symbol, '15Min', 'm15');
-  recompute(symbol);
-}
-
-async function fetchHistory(symbol, timeframe, tf){
-  try{
-    const url = `https://data.alpaca.markets/v2/stocks/${symbol}/bars?timeframe=${timeframe}&limit=100&adjustment=raw&feed=iex`;
-    const res = await fetch(url, { headers: authHeaders() });
-    const data = await res.json();
-    candles[symbol][tf] = (data.bars||[]).map(b=>({open:b.o, high:b.h, low:b.l, close:b.c, t:b.t}));
-  }catch(e){
-    addSystemMsg(`Could not load ${timeframe} history for ${symbol}.`);
-  }
 }
 
 // ---------- LIVE DATA STREAM (1-min bars, aggregated to 5m/15m) ----------
@@ -478,7 +473,7 @@ function pushAggBar(c, chunk, tf){
 // ---------- INDICATOR ENGINE ----------
 function sma(arr,n){ if(arr.length<n) return null; return arr.slice(-n).reduce((a,b)=>a+b,0)/n; }
 function ema(arr,n){ if(arr.length<n) return null; const k=2/(n+1); let e=arr.slice(0,n).reduce((a,b)=>a+b,0)/n; for(let i=n;i<arr.length;i++) e=arr[i]*k+e*(1-k); return e; }
-function rsi(closes,n=14){
+function rsi(closes,n=9){
   if(closes.length<n+1) return null;
   let gains=0, losses=0;
   for(let i=closes.length-n;i<closes.length;i++){ const d=closes[i]-closes[i-1]; if(d>=0) gains+=d; else losses-=d; }
@@ -486,7 +481,7 @@ function rsi(closes,n=14){
   if(avgLoss===0) return 100;
   return 100-(100/(1+avgGain/avgLoss));
 }
-function stochastic(bars,n=14){
+function stochastic(bars,n=9){
   if(bars.length<n) return null;
   const slice=bars.slice(-n);
   const hi=Math.max(...slice.map(b=>b.high)), lo=Math.min(...slice.map(b=>b.low));
@@ -494,19 +489,19 @@ function stochastic(bars,n=14){
   if(hi===lo) return 50;
   return ((close-lo)/(hi-lo))*100;
 }
-function macdSignal(closes){
-  if(closes.length<35) return null;
+function macdSignal(closes, fastN=6, slowN=13, sigN=5){
+  if(closes.length<slowN+sigN) return null;
   const emaFastArr=[], emaSlowArr=[];
-  for(let i=12;i<=closes.length;i++) emaFastArr.push(ema(closes.slice(0,i),12));
-  for(let i=26;i<=closes.length;i++) emaSlowArr.push(ema(closes.slice(0,i),26));
+  for(let i=fastN;i<=closes.length;i++) emaFastArr.push(ema(closes.slice(0,i),fastN));
+  for(let i=slowN;i<=closes.length;i++) emaSlowArr.push(ema(closes.slice(0,i),slowN));
   const len=Math.min(emaFastArr.length, emaSlowArr.length);
   const macdLine=[];
   for(let i=0;i<len;i++) macdLine.push(emaFastArr[emaFastArr.length-len+i]-emaSlowArr[emaSlowArr.length-len+i]);
-  if(macdLine.length<9) return null;
-  const signal=ema(macdLine,9);
+  if(macdLine.length<sigN) return null;
+  const signal=ema(macdLine,sigN);
   return macdLine[macdLine.length-1]-signal;
 }
-function atr(bars,n=14){
+function atr(bars,n=9){
   if(bars.length<n+1) return null;
   const trs=[];
   for(let i=bars.length-n;i<bars.length;i++){
@@ -516,21 +511,22 @@ function atr(bars,n=14){
   return trs.reduce((a,b)=>a+b,0)/n;
 }
 function scoreTimeframe(bars){
-  if(bars.length<35) return 0;
+  if(bars.length<MIN_BARS_FOR_SIGNAL) return 0;
   const closes=bars.map(b=>b.close);
   let score=0;
   const r=rsi(closes); if(r!==null){ if(r<30) score++; else if(r>70) score--; }
   const hist=macdSignal(closes); if(hist!==null){ if(hist>0) score++; else if(hist<0) score--; }
-  const maFast=sma(closes,20), maSlow=sma(closes,50);
+  const maFast=sma(closes,8), maSlow=sma(closes,20);
   if(maFast!==null && maSlow!==null){ if(maFast>maSlow) score++; else if(maFast<maSlow) score--; }
   const st=stochastic(bars); if(st!==null){ if(st<20) score++; else if(st>80) score--; }
   return score;
 }
 function recompute(symbol){
   const c=candles[symbol]; if(!c) return;
+  scores[symbol].warming = c.m5.length < MIN_BARS_FOR_SIGNAL || c.m15.length < MIN_BARS_FOR_SIGNAL;
   scores[symbol].m5=scoreTimeframe(c.m5);
   scores[symbol].m15=scoreTimeframe(c.m15);
-  scores[symbol].atr = atr(c.m5.length>=15?c.m5:c.m15) || null;
+  scores[symbol].atr = atr(c.m5.length>=10?c.m5:c.m15) || null;
   if(c.m5.length) scores[symbol].price=c.m5[c.m5.length-1].close;
   renderScannerCard(symbol);
 }
@@ -544,8 +540,11 @@ function renderScannerCard(symbol){
   const s=scores[symbol];
   const aligned = s.m5!==0 && Math.sign(s.m5)===Math.sign(s.m15);
   const strong = Math.abs(s.m5)>=riskState.threshold && Math.abs(s.m15)>=Math.max(2,riskState.threshold-1);
-  let verdictClass='wait', verdictText='SCANNING…';
-  if(aligned && strong){
+  const c = candles[symbol] || {m5:[],m15:[]};
+  let verdictClass='wait', verdictText = s.warming
+    ? `WARMING UP (${Math.min(c.m5.length,MIN_BARS_FOR_SIGNAL)}/${MIN_BARS_FOR_SIGNAL} 5m bars)`
+    : 'SCANNING…';
+  if(!s.warming && aligned && strong){
     if(s.m5>0){ verdictClass='buy'; verdictText='LONG CONFLUENCE'; }
     else { verdictClass = ALLOW_SHORT ? 'sell' : 'wait'; verdictText = ALLOW_SHORT ? 'SHORT CONFLUENCE' : 'SHORT SIGNAL (long-only mode)'; }
   }
@@ -569,6 +568,7 @@ function maybeAutoTrade(symbol){
   if(openPositions[symbol]) return;
 
   const s = scores[symbol];
+  if(s.warming) return;
   const aligned = s.m5!==0 && Math.sign(s.m5)===Math.sign(s.m15);
   const strong = Math.abs(s.m5)>=riskState.threshold && Math.abs(s.m15)>=Math.max(2,riskState.threshold-1);
   if(!aligned || !strong || !s.atr || !s.price) return;
@@ -744,7 +744,7 @@ document.querySelectorAll('.chip').forEach(chip=>{ chip.addEventListener('click'
 // ---------- INIT ----------
 updateModeIndicator();
 updateStats();
-addMsg("I'm NEXA for equities. Paste your Alpaca API Key ID and Secret Key above, set your watchlist, and hit Connect — I'll start scanning immediately. I stay on PAPER and AUTO OFF until you tell me otherwise, and I only trade during regular market hours.", 'bot');
+addMsg("I'm NEXA for equities. Paste your Alpaca API Key ID and Secret Key above, set your watchlist, and hit Connect. Alpaca's historical-data endpoint blocks direct browser requests (a CORS limitation on their side), so I build each symbol's 5m/15m history live from the market data stream — expect a short warm-up (roughly 20 bars per timeframe) before signals go live. I stay on PAPER and AUTO OFF until you tell me otherwise, and I only trade during regular market hours.", 'bot');
 </script>
 </body>
 </html>
