@@ -3,940 +3,451 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>NEXA EQUITIES — Alpaca AI Trading Console (fixed)</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<title>NEXA — Simple Alpaca Paper Trader</title>
 <style>
-  :root{
-    --bg: #05080f;
-    --panel: #0b1220;
-    --panel-2: #0e1626;
-    --line: #16233a;
-    --cyan: #5fe3ff;
-    --cyan-dim: #2b8fa8;
-    --violet: #7c8bff;
-    --text: #e8f1f7;
-    --muted: #7a93a8;
-    --green: #3ddc97;
-    --red: #ff4f6d;
-    --amber: #ffc857;
-    --mono: 'JetBrains Mono', 'SF Mono', Consolas, monospace;
-    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    --disp: 'Orbitron', var(--sans);
+  :root {
+    --bg: #0a0e14; --card: #121820; --line: #1e2a3a;
+    --text: #e6edf3; --muted: #8b9cb3; --cyan: #3db9e8;
+    --green: #3ddc97; --red: #ff5c7a; --amber: #f0b429;
   }
-
-  *{box-sizing:border-box; margin:0; padding:0;}
-  html,body{height:100%;}
-  body{
-    background:
-      radial-gradient(1200px 600px at 15% -10%, rgba(95,227,255,0.07), transparent 60%),
-      radial-gradient(900px 500px at 100% 110%, rgba(124,139,255,0.06), transparent 60%),
-      var(--bg);
-    color:var(--text);
-    font-family:var(--sans);
-    min-height:100vh;
-    overflow-x:hidden;
-  }
-  .weave{
-    position:fixed; inset:0; z-index:0; opacity:0.35; pointer-events:none;
-    background-image:
-      repeating-linear-gradient(115deg, rgba(95,227,255,0.05) 0px, rgba(95,227,255,0.05) 1px, transparent 1px, transparent 90px),
-      repeating-linear-gradient(25deg, rgba(124,139,255,0.04) 0px, rgba(124,139,255,0.04) 1px, transparent 1px, transparent 110px);
-  }
-  .shell{position:relative; z-index:1; max-width:1400px; margin:0 auto; padding:20px 20px 60px;}
-
-  header{
-    display:flex; align-items:center; justify-content:space-between;
-    padding:14px 20px; border:1px solid var(--line); border-radius:14px;
-    background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);
-    margin-bottom:18px; flex-wrap:wrap; gap:12px;
-  }
-  .brand{display:flex; align-items:center; gap:14px;}
-  .core{
-    width:38px; height:38px; border-radius:50%;
-    border:2px solid var(--cyan);
-    box-shadow:0 0 16px rgba(95,227,255,0.5), inset 0 0 10px rgba(95,227,255,0.3);
-    position:relative; flex-shrink:0;
-  }
-  .core::after{
-    content:''; position:absolute; inset:8px; border-radius:50%; background:var(--cyan);
-    animation:pulse 2.2s ease-in-out infinite;
-  }
-  .core.thinking::after{ animation:pulse 0.6s ease-in-out infinite; background:var(--amber);}
-  @keyframes pulse{ 0%,100%{ transform:scale(0.7); opacity:0.6; } 50%{ transform:scale(1); opacity:1; } }
-  h1{font-family:var(--disp); font-size:20px; letter-spacing:2px; font-weight:700;}
-  h1 span{color:var(--cyan);}
-  .tag{font-size:11px; color:var(--muted); letter-spacing:1px; margin-top:2px;}
-
-  .status-row{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
-  .pill{
-    font-family:var(--mono); font-size:11px; padding:6px 12px; border-radius:20px;
-    border:1px solid var(--line); background:var(--panel-2); display:flex; align-items:center; gap:6px;
-  }
-  .dot{width:7px; height:7px; border-radius:50%; background:var(--muted);}
-  .dot.on{background:var(--green); box-shadow:0 0 8px var(--green);}
-  .dot.off{background:var(--red); box-shadow:0 0 8px var(--red);}
-  .dot.warn{background:var(--amber); box-shadow:0 0 8px var(--amber);}
-
-  .mode-toggle{display:flex; border:1px solid var(--line); border-radius:20px; overflow:hidden; font-family:var(--mono); font-size:11px;}
-  .mode-toggle button{background:var(--panel-2); color:var(--muted); border:none; padding:6px 14px; cursor:pointer; transition:.2s;}
-  .mode-toggle button.active{background:var(--green); color:#04120c; font-weight:700;}
-  .mode-toggle button.active.live{background:var(--red); color:#1a0508;}
-
-  .setup{
-    display:grid; grid-template-columns:repeat(auto-fit, minmax(210px,1fr)); gap:12px;
-    border:1px solid var(--line); border-radius:14px; padding:16px 18px; background:var(--panel); margin-bottom:18px;
-  }
-  .field label{display:block; font-size:11px; color:var(--muted); margin-bottom:6px; letter-spacing:0.5px;}
-  .field input, .field select{
-    width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text);
-    padding:9px 10px; border-radius:8px; font-family:var(--mono); font-size:12px;
-  }
-  .field input:focus{outline:none; border-color:var(--cyan);}
-  .connect-btn{
-    background:linear-gradient(135deg, var(--cyan), var(--violet)); border:none; color:#03131a;
-    font-weight:700; border-radius:8px; padding:0 18px; cursor:pointer; font-family:var(--sans);
-    align-self:end; height:36px; margin-top:20px;
-  }
-  .connect-btn:disabled{opacity:0.5; cursor:not-allowed;}
-  .warn-box{
-    grid-column:1/-1; font-size:11.5px; color:var(--amber); background:rgba(255,200,87,0.08);
-    border:1px solid rgba(255,200,87,0.3); border-radius:8px; padding:10px 12px; line-height:1.5;
-  }
-
-  .grid{display:grid; grid-template-columns:1.15fr 1fr; gap:18px;}
-  @media (max-width:960px){ .grid{grid-template-columns:1fr;} }
-
-  .panel{border:1px solid var(--line); border-radius:14px; background:var(--panel); overflow:hidden; display:flex; flex-direction:column;}
-  .panel-head{
-    padding:12px 16px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between;
-    font-family:var(--disp); font-size:12px; letter-spacing:1.5px; color:var(--cyan); background:var(--panel-2);
-  }
-
-  .chat-log{flex:1; min-height:360px; max-height:420px; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:10px;}
-  .msg{max-width:88%; padding:9px 13px; border-radius:12px; font-size:13px; line-height:1.5;}
-  .msg.bot{background:var(--panel-2); border:1px solid var(--line); align-self:flex-start; border-bottom-left-radius:3px;}
-  .msg.user{background:rgba(95,227,255,0.12); border:1px solid rgba(95,227,255,0.25); align-self:flex-end; border-bottom-right-radius:3px;}
-  .msg.system{align-self:center; color:var(--muted); font-family:var(--mono); font-size:11px; background:none; border:none; text-align:center;}
-  .msg .tstamp{display:block; font-family:var(--mono); font-size:9.5px; color:var(--muted); margin-top:4px;}
-
-  .chat-input-row{display:flex; gap:8px; padding:12px 14px; border-top:1px solid var(--line); background:var(--panel-2);}
-  .chat-input-row input{flex:1; background:var(--panel); border:1px solid var(--line); color:var(--text); padding:10px 12px; border-radius:8px; font-size:13px;}
-  .chat-input-row input:focus{outline:none; border-color:var(--cyan);}
-  .chat-input-row button{background:var(--cyan); border:none; color:#03131a; font-weight:700; padding:0 16px; border-radius:8px; cursor:pointer;}
-  .chips{display:flex; gap:6px; flex-wrap:wrap; padding:0 14px 12px; background:var(--panel-2);}
-  .chip{font-family:var(--mono); font-size:10.5px; color:var(--cyan-dim); border:1px solid var(--line); padding:4px 9px; border-radius:20px; cursor:pointer; background:var(--panel);}
-  .chip:hover{border-color:var(--cyan); color:var(--cyan);}
-
-  .scanner-body{padding:14px 16px; display:flex; flex-direction:column; gap:12px;}
-  .sym-card{border:1px solid var(--line); border-radius:10px; padding:12px; background:var(--panel-2);}
-  .sym-top{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
-  .sym-name{font-family:var(--disp); font-size:13px; letter-spacing:1px;}
-  .sym-price{font-family:var(--mono); font-size:13px; color:var(--muted);}
-  .score-row{display:flex; align-items:center; gap:8px; margin-bottom:4px;}
-  .score-label{font-size:10px; color:var(--muted); width:38px; font-family:var(--mono);}
-  .score-bar{flex:1; height:6px; background:var(--panel); border-radius:4px; overflow:hidden; position:relative;}
-  .score-fill{height:100%; border-radius:4px; transition:width .4s ease;}
-  .verdict{margin-top:8px; font-family:var(--mono); font-size:11px; padding:6px 10px; border-radius:6px; text-align:center; letter-spacing:1px;}
-  .verdict.buy{background:rgba(61,220,151,0.12); color:var(--green); border:1px solid rgba(61,220,151,0.3);}
-  .verdict.sell{background:rgba(255,79,109,0.12); color:var(--red); border:1px solid rgba(255,79,109,0.3);}
-  .verdict.wait{background:rgba(122,147,168,0.1); color:var(--muted); border:1px solid var(--line);}
-
-  .risk-body{padding:14px 16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px;}
-  .risk-field label{display:block; font-size:10px; color:var(--muted); margin-bottom:5px;}
-  .risk-field input{width:100%; background:var(--panel-2); border:1px solid var(--line); color:var(--text); padding:7px 9px; border-radius:6px; font-family:var(--mono); font-size:12px;}
-
-  .stat-strip{display:grid; grid-template-columns:repeat(4,1fr); gap:1px; background:var(--line); border-radius:10px; overflow:hidden; margin:14px 0;}
-  .stat{background:var(--panel); padding:12px 14px;}
-  .stat .k{font-size:10px; color:var(--muted); letter-spacing:0.5px;}
-  .stat .v{font-family:var(--mono); font-size:17px; margin-top:4px;}
-  .v.pos{color:var(--green);} .v.neg{color:var(--red);}
-
-  table{width:100%; border-collapse:collapse; font-size:12px;}
-  th{text-align:left; color:var(--muted); font-weight:500; font-size:10.5px; padding:8px 12px; border-bottom:1px solid var(--line);}
-  td{padding:8px 12px; border-bottom:1px solid var(--line); font-family:var(--mono);}
-  .side-buy{color:var(--green);} .side-sell{color:var(--red);}
-  .empty-row td{color:var(--muted); text-align:center; padding:22px; font-family:var(--sans);}
-
-  ::-webkit-scrollbar{width:6px;}
-  ::-webkit-scrollbar-thumb{background:var(--line); border-radius:4px;}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: var(--bg); color: var(--text); padding: 16px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.25rem; margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 12px; }
+  label { display: block; font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+  input { width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); margin-bottom: 10px; }
+  button { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+  .btn-primary { background: var(--cyan); color: #041018; }
+  .btn-off { background: var(--line); color: var(--muted); }
+  .btn-on { background: var(--green); color: #04120c; }
+  .btn-danger { background: var(--red); color: #fff; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+  .pill { font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; background: var(--bg); border: 1px solid var(--line); }
+  .ok { color: var(--green); } .bad { color: var(--red); } .warn { color: var(--amber); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 640px) { .grid2 { grid-template-columns: 1fr; } }
+  .sym { border: 1px solid var(--line); border-radius: 8px; padding: 10px; margin-bottom: 8px; }
+  .sym-name { font-weight: 700; }
+  .bar { height: 6px; background: var(--bg); border-radius: 3px; margin: 4px 0; overflow: hidden; }
+  .fill { height: 100%; border-radius: 3px; }
+  #log { font-size: 0.8rem; max-height: 180px; overflow-y: auto; color: var(--muted); white-space: pre-wrap; }
+  .warn-box { font-size: 0.8rem; color: var(--amber); line-height: 1.4; }
+  table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-weight: 500; }
 </style>
 </head>
 <body>
-<div class="weave"></div>
-<div class="shell">
 
-  <header>
-    <div class="brand">
-      <div class="core" id="coreIndicator"></div>
-      <div>
-        <h1>NEXA <span>EQUITIES</span></h1>
-        <div class="tag">CHAT-DRIVEN ALPACA EXECUTION ENGINE · FIXED BUILD</div>
-      </div>
-    </div>
-    <div class="status-row">
-      <div class="pill"><span class="dot off" id="connDot"></span><span id="connText">disconnected</span></div>
-      <div class="pill"><span class="dot off" id="wsDot"></span><span id="wsText">stream off</span></div>
-      <div class="pill"><span class="dot off" id="marketDot"></span><span id="marketText">market unknown</span></div>
-      <div class="pill">EQUITY <span id="balText" style="color:var(--cyan)">—</span></div>
-      <div class="mode-toggle">
-        <button id="paperBtn" class="active">PAPER</button>
-        <button id="liveBtn">LIVE</button>
-      </div>
-      <div class="mode-toggle">
-        <button id="autoOffBtn" class="active">AUTO OFF</button>
-        <button id="autoOnBtn">AUTO ON</button>
-      </div>
-    </div>
-  </header>
+<h1>NEXA</h1>
+<p class="sub">Personal Alpaca paper trader · your keys only · not financial advice</p>
 
-  <div class="setup">
-    <div class="field">
-      <label>ALPACA API KEY ID</label>
-      <input type="password" id="keyInput" placeholder="APCA-API-KEY-ID" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>ALPACA SECRET KEY</label>
-      <input type="password" id="secretInput" placeholder="APCA-API-SECRET-KEY" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>GROQ API KEY (optional — smarter chat)</label>
-      <input type="password" id="groqInput" placeholder="optional" autocomplete="off">
-    </div>
-    <div class="field">
-      <label>WATCHLIST (comma-separated)</label>
-      <input type="text" id="symbolInput" value="AAPL, NVDA, SPY">
-    </div>
-    <div class="field" style="grid-column:1/-1;">
-      <label>OPTIONAL CORS PROXY FOR HISTORICAL BARS (self-hosted recommended)</label>
-      <input type="text" id="proxyInput" placeholder="e.g. http://127.0.0.1:8787/?url=  — blank = live warm-up only">
-    </div>
-    <button class="connect-btn" id="connectBtn">CONNECT</button>
-    <div class="warn-box">
-      ⚠ PAPER + AUTO OFF by default. LIVE / AUTO ON need explicit confirmation.
-      Alpaca Market Data REST still blocks browser CORS — history only loads if you supply a proxy that forwards APCA headers, or the bot warms up from the live IEX stream.
-      Keys stay in-browser memory only. Not financial advice. Long-only by default.
-    </div>
+<div class="card">
+  <label>Alpaca API Key ID</label>
+  <input type="password" id="key" autocomplete="off" placeholder="Paper key ID">
+  <label>Alpaca Secret Key</label>
+  <input type="password" id="secret" autocomplete="off" placeholder="Paper secret">
+  <label>Watchlist (comma-separated)</label>
+  <input type="text" id="symbols" value="AAPL, SPY, NVDA">
+  <div class="row">
+    <button class="btn-primary" id="connect">Connect (Paper)</button>
+    <span class="pill" id="status">disconnected</span>
+    <span class="pill" id="market">market ?</span>
   </div>
+  <p class="warn-box">Uses paper-api by default. Keys stay in this browser tab only. AUTO is off until you turn it on. Live trading is not enabled in this simple build.</p>
+</div>
 
-  <div class="stat-strip">
-    <div class="stat"><div class="k">DAY P/L (portfolio)</div><div class="v" id="pnlStat">$0.00</div></div>
-    <div class="stat"><div class="k">OPEN POSITIONS</div><div class="v" id="openStat">0</div></div>
-    <div class="stat"><div class="k">TRADES TODAY</div><div class="v" id="tradesStat">0</div></div>
-    <div class="stat"><div class="k">DAILY LOSS LIMIT</div><div class="v" id="limitStat">$0.00</div></div>
+<div class="card">
+  <div class="row">
+    <div><strong>Equity</strong> <span id="equity">—</span></div>
+    <div><strong>Day P/L</strong> <span id="pnl">—</span></div>
+    <div><strong>Open</strong> <span id="openPos">0</span></div>
+    <div><strong>Trades today</strong> <span id="trades">0</span></div>
   </div>
-
-  <div class="grid">
-    <div class="panel">
-      <div class="panel-head">CHAT COMMAND CONSOLE <span id="modeIndicator" style="color:var(--muted)">PAPER · AUTO OFF</span></div>
-      <div class="chat-log" id="chatLog"></div>
-      <div class="chips">
-        <div class="chip" data-cmd="status">status</div>
-        <div class="chip" data-cmd="start autotrade">start autotrade</div>
-        <div class="chip" data-cmd="stop">stop</div>
-        <div class="chip" data-cmd="close all">close all</div>
-        <div class="chip" data-cmd="set risk 1%">set risk 1%</div>
-        <div class="chip" data-cmd="set daily loss limit $100">daily loss $100</div>
-      </div>
-      <div class="chat-input-row">
-        <input type="text" id="chatInput" placeholder="e.g. 'start autotrading with 1% risk' or 'status'">
-        <button id="sendBtn">SEND</button>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">TRIPLE-SCREEN SCANNER <span style="color:var(--muted)">5m · 15m confluence</span></div>
-      <div class="scanner-body" id="scannerBody"></div>
-    </div>
+  <div class="row">
+    <button class="btn-off" id="autoBtn">AUTO OFF</button>
+    <button class="btn-danger" id="closeAll">Close all</button>
   </div>
+</div>
 
-  <div class="grid" style="margin-top:18px;">
-    <div class="panel">
-      <div class="panel-head">RISK MANAGEMENT</div>
-      <div class="risk-body">
-        <div class="risk-field"><label>RISK PER TRADE (%)</label><input type="number" id="riskPct" value="1" min="0.1" max="10" step="0.1"></div>
-        <div class="risk-field"><label>DAILY LOSS LIMIT ($)</label><input type="number" id="dailyLimit" value="100" min="1" step="1"></div>
-        <div class="risk-field"><label>STOP-LOSS (× ATR)</label><input type="number" id="atrStop" value="1.5" min="0.5" max="5" step="0.1"></div>
-        <div class="risk-field"><label>TAKE-PROFIT (× ATR)</label><input type="number" id="atrTarget" value="2.5" min="0.5" max="8" step="0.1"></div>
-        <div class="risk-field"><label>CONFLUENCE THRESHOLD (0–4)</label><input type="number" id="threshold" value="3" min="1" max="4" step="1"></div>
-        <div class="risk-field"><label>MAX CONCURRENT POSITIONS</label><input type="number" id="maxPos" value="3" min="1" max="10" step="1"></div>
-        <div class="risk-field"><label>MAX TRADES / DAY</label><input type="number" id="maxTrades" value="8" min="1" step="1"></div>
-        <div class="risk-field"><label>ALLOW SHORT SELLING</label><input type="text" id="allowShort" value="no (long only)" readonly style="color:var(--muted)"></div>
-      </div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head">TRADE LOG</div>
-      <div style="max-height:280px; overflow-y:auto;">
-        <table>
-          <thead><tr><th>TIME</th><th>SYMBOL</th><th>SIDE</th><th>QTY</th><th>STATUS</th></tr></thead>
-          <tbody id="tradeLogBody"><tr class="empty-row"><td colspan="5">No trades yet this session</td></tr></tbody>
-        </table>
-      </div>
-    </div>
+<div class="card grid2">
+  <div>
+    <label>Risk % / trade</label>
+    <input type="number" id="riskPct" value="1" min="0.1" max="5" step="0.1">
+    <label>Daily loss limit $</label>
+    <input type="number" id="dailyLimit" value="100" min="1">
   </div>
+  <div>
+    <label>Stop (× ATR)</label>
+    <input type="number" id="atrStop" value="1.5" min="0.5" step="0.1">
+    <label>Target (× ATR)</label>
+    <input type="number" id="atrTarget" value="2.5" min="0.5" step="0.1">
+  </div>
+</div>
 
+<div class="card">
+  <strong>Scanner</strong>
+  <div id="scanner" style="margin-top:10px;"></div>
+</div>
+
+<div class="card">
+  <strong>Log</strong>
+  <div id="log"></div>
+</div>
+
+<div class="card">
+  <strong>Trades</strong>
+  <table>
+    <thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Status</th></tr></thead>
+    <tbody id="tradeBody"><tr><td colspan="5" style="color:var(--muted)">None yet</td></tr></tbody>
+  </table>
 </div>
 
 <script>
-/* =========================================================================
-   NEXA EQUITIES — FIXED BUILD (patched)
-   - Calendar-aligned 5m/15m from 1m stream
-   - WS reconnect + updatedBars
-   - Day P/L via Trading API portfolio/history
-   - Optional user CORS proxy for historical bootstrap
-   - Realistic warm-up, bucket-key 5m signals, ET day trade counter
-   ========================================================================= */
+const API = 'https://paper-api.alpaca.markets';
+const MIN5 = 20, MIN15 = 10, MAX_M1 = 400;
+const THRESH = 3, MAX_POS = 3, MAX_TRADES = 8;
 
-const ALLOW_SHORT = false;
-const MIN_BARS_5M = 20;
-const MIN_BARS_15M = 10; // ~2.5h of 15m; was effectively blocking on 20×15m
-const MAX_M1 = 400;
-
-let creds = { key:'', secret:'' };
-let mode = 'paper';
-let autoTrading = false;
-let authorized = false;
+let key = '', secret = '';
 let watchlist = [];
-let candles = {};
-let scores = {};
-let account = { equity:null, buying_power:null };
+let candles = {}, scores = {};
+let equity = null, dayPnl = 0, tradesToday = 0, tradesDay = '';
 let openPositions = {};
-let dayPnl = 0;
-let tradesToday = 0;
-let tradesDayKey = ''; // YYYY-MM-DD in America/New_York
-let marketOpen = false;
-let dataWs = null;
-let wsWanted = false;
-let wsRetry = 0;
-let lastWsMsgAt = 0;
-let corsProxy = '';
-let pollTimers = [];
+let auto = false, marketOpen = false, authorized = false;
+let ws = null, wsWanted = false, wsRetry = 0, lastMsg = 0;
 
-let riskState = { riskPct:1, dailyLimit:100, atrStop:1.5, atrTarget:2.5, threshold:3, maxPos:3, maxTrades:8 };
-
-const el = id => document.getElementById(id);
-const chatLog = el('chatLog');
-
-function apiBase(){ return mode==='paper' ? 'https://paper-api.alpaca.markets' : 'https://api.alpaca.markets'; }
-function authHeaders(){ return { 'APCA-API-KEY-ID': creds.key, 'APCA-API-SECRET-KEY': creds.secret, 'Content-Type':'application/json' }; }
-
-function etDayKey(d = new Date()){
-  try{
-    return new Intl.DateTimeFormat('en-CA', { timeZone:'America/New_York', year:'numeric', month:'2-digit', day:'2-digit' }).format(d);
-  }catch(e){
-    return d.toISOString().slice(0,10);
-  }
+const $ = id => document.getElementById(id);
+function log(msg) {
+  const el = $('log');
+  el.textContent = new Date().toLocaleTimeString() + '  ' + msg + '\n' + el.textContent;
 }
-function ensureTradeDay(){
-  const key = etDayKey();
-  if(key !== tradesDayKey){
-    tradesDayKey = key;
-    tradesToday = 0;
-    updateStats();
-  }
+function headers() {
+  return { 'APCA-API-KEY-ID': key, 'APCA-API-SECRET-KEY': secret, 'Content-Type': 'application/json' };
+}
+function etDay() {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch { return new Date().toISOString().slice(0, 10); }
+}
+function ensureDay() {
+  const d = etDay();
+  if (d !== tradesDay) { tradesDay = d; tradesToday = 0; }
+}
+function stats() {
+  ensureDay();
+  $('equity').textContent = equity != null ? '$' + (+equity).toFixed(2) : '—';
+  const p = $('pnl');
+  p.textContent = (dayPnl >= 0 ? '+$' : '-$') + Math.abs(dayPnl).toFixed(2);
+  p.className = dayPnl >= 0 ? 'ok' : 'bad';
+  $('openPos').textContent = Object.keys(openPositions).length;
+  $('trades').textContent = tradesToday;
 }
 
-function addMsg(text, kind='bot'){
-  const div = document.createElement('div');
-  div.className = 'msg ' + kind;
-  div.innerHTML = text.replace(/\n/g,'<br>') + `<span class="tstamp">${new Date().toLocaleTimeString()}</span>`;
-  chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-function addSystemMsg(text){
-  const div = document.createElement('div');
-  div.className = 'msg system';
-  div.textContent = text;
-  chatLog.appendChild(div);
-  chatLog.scrollTop = chatLog.scrollHeight;
-}
-function setThinking(on){ el('coreIndicator').classList.toggle('thinking', on); }
-function setConn(state){
-  const dot = el('connDot');
-  dot.className = 'dot ' + (state==='on'?'on':state==='warn'?'warn':'off');
-  el('connText').textContent = state==='on' ? 'connected' : state==='warn' ? 'connecting…' : 'disconnected';
-}
-function setWs(state, label){
-  el('wsDot').className = 'dot ' + (state==='on'?'on':state==='warn'?'warn':'off');
-  el('wsText').textContent = label || (state==='on'?'stream on':state==='warn'?'stream…':'stream off');
-}
-function setMarketDot(open){
-  el('marketDot').className = 'dot ' + (open ? 'on' : 'off');
-  el('marketText').textContent = open ? 'market open' : 'market closed';
-}
-function updateModeIndicator(){ el('modeIndicator').textContent = `${mode.toUpperCase()} · AUTO ${autoTrading?'ON':'OFF'}`; }
-function updateStats(){
-  ensureTradeDay();
-  const pnlEl = el('pnlStat');
-  pnlEl.textContent = (dayPnl>=0?'+$':'-$') + Math.abs(dayPnl).toFixed(2);
-  pnlEl.className = 'v ' + (dayPnl>=0?'pos':'neg');
-  el('openStat').textContent = Object.keys(openPositions).length;
-  el('tradesStat').textContent = tradesToday;
-  el('limitStat').textContent = '$' + riskState.dailyLimit.toFixed(2);
-  el('balText').textContent = account.equity!==null ? `$${(+account.equity).toFixed(2)}` : '—';
-}
-
-// ---------- MODE TOGGLES ----------
-el('paperBtn').onclick = () => setMode('paper');
-el('liveBtn').onclick = () => {
-  if(!confirm('Switch to LIVE trading? Real funds will be used. Continue?')) return;
-  setMode('live');
-};
-function setMode(m){
-  mode = m;
-  el('paperBtn').classList.toggle('active', m==='paper');
-  el('liveBtn').classList.toggle('active', m==='live');
-  el('liveBtn').classList.toggle('live', m==='live');
-  updateModeIndicator();
-  addSystemMsg(`Mode set to ${m.toUpperCase()}. Reconnect to apply.`);
-}
-el('autoOffBtn').onclick = () => setAuto(false);
-el('autoOnBtn').onclick = () => {
-  if(!authorized){ addSystemMsg('Connect and authorize first.'); return; }
-  if(mode==='live' && !confirm('Enable LIVE auto-trading? Real market + bracket orders will fire on confluence. Continue?')) return;
-  setAuto(true);
-};
-function setAuto(on){
-  autoTrading = on;
-  el('autoOffBtn').classList.toggle('active', !on);
-  el('autoOnBtn').classList.toggle('active', on);
-  updateModeIndicator();
-  addSystemMsg(`Auto-trading ${on?'ENABLED':'disabled'}.`);
-}
-
-function clearPollTimers(){
-  pollTimers.forEach(clearInterval);
-  pollTimers = [];
-}
-
-// ---------- CONNECT ----------
-el('connectBtn').onclick = connect;
-async function connect(){
-  creds.key = el('keyInput').value.trim();
-  creds.secret = el('secretInput').value.trim();
-  corsProxy = el('proxyInput').value.trim();
-  if(!creds.key || !creds.secret){ addSystemMsg('Enter both Alpaca API Key ID and Secret Key.'); return; }
-  watchlist = el('symbolInput').value.split(',').map(s=>s.trim().toUpperCase()).filter(Boolean);
-  if(watchlist.length===0){ addSystemMsg('Enter at least one ticker.'); return; }
-
-  ensureTradeDay();
-  setConn('warn');
-  clearPollTimers();
-  try{
-    const res = await fetch(`${apiBase()}/v2/account`, { headers: authHeaders() });
-    if(!res.ok){ throw new Error(`HTTP ${res.status}`); }
+// ---------- connect ----------
+$('connect').onclick = async () => {
+  key = $('key').value.trim();
+  secret = $('secret').value.trim();
+  watchlist = $('symbols').value.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  if (!key || !secret || !watchlist.length) { log('Need keys + at least one symbol'); return; }
+  $('status').textContent = 'connecting…';
+  try {
+    const res = await fetch(API + '/v2/account', { headers: headers() });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
     const acc = await res.json();
+    equity = acc.equity;
     authorized = true;
-    account.equity = acc.equity;
-    account.buying_power = acc.buying_power;
-    setConn('on');
-    updateStats();
-    addSystemMsg(`Authorized on ${mode.toUpperCase()}. Equity $${(+acc.equity).toFixed(2)}.`);
-    addMsg(`Connected. Watching ${watchlist.join(', ')}. Say "start autotrade" or "status".`, 'bot');
-    await checkMarketClock();
-    await Promise.all(watchlist.map(initSymbol));
-    await bootstrapHistory();
+    ensureDay();
+    stats();
+    $('status').textContent = 'connected (paper)';
+    $('status').className = 'pill ok';
+    log('Connected. Equity $' + (+equity).toFixed(2));
+    watchlist.forEach(initSym);
+    await clock();
     wsWanted = true;
-    connectDataStream();
-    pollTimers.push(setInterval(pollAccountAndOrders, 15000));
-    pollTimers.push(setInterval(checkMarketClock, 60000));
-    pollTimers.push(setInterval(wsWatchdog, 20000));
-    pollTimers.push(setInterval(ensureTradeDay, 60000));
-  }catch(e){
-    setConn('off'); authorized=false;
-    addSystemMsg('Authorization failed — check keys and PAPER/LIVE match.');
+    connectWs();
+    setInterval(poll, 15000);
+    setInterval(clock, 60000);
+    setInterval(wsWatch, 20000);
+  } catch (e) {
+    authorized = false;
+    $('status').textContent = 'failed';
+    $('status').className = 'pill bad';
+    log('Auth failed — check paper keys');
   }
+};
+
+async function clock() {
+  try {
+    const r = await fetch(API + '/v2/clock', { headers: headers() });
+    const c = await r.json();
+    marketOpen = !!c.is_open;
+    $('market').textContent = marketOpen ? 'market open' : 'market closed';
+    $('market').className = 'pill ' + (marketOpen ? 'ok' : 'bad');
+  } catch {}
 }
 
-async function checkMarketClock(){
-  try{
-    const res = await fetch(`${apiBase()}/v2/clock`, { headers: authHeaders() });
-    const clock = await res.json();
-    marketOpen = !!clock.is_open;
-    setMarketDot(marketOpen);
-  }catch(e){}
+// ---------- bars ----------
+function floorMs(ts, mins) {
+  const step = mins * 60 * 1000;
+  return Math.floor(new Date(ts).getTime() / step) * step;
 }
-
-// ---------- HISTORY BOOTSTRAP ----------
-async function bootstrapHistory(){
-  if(!corsProxy){
-    addSystemMsg('No CORS proxy set — building bars from live stream (warm-up ~20×5m + 10×15m).');
-    return;
-  }
-  addSystemMsg('Bootstrapping 1m history via your CORS proxy…');
-  for(const symbol of watchlist){
-    try{
-      const target = `https://data.alpaca.markets/v2/stocks/${encodeURIComponent(symbol)}/bars?timeframe=1Min&limit=200&adjustment=raw&feed=iex`;
-      const url = corsProxy.includes('{url}')
-        ? corsProxy.replace('{url}', encodeURIComponent(target))
-        : corsProxy + encodeURIComponent(target);
-      const res = await fetch(url, { headers: authHeaders() });
-      if(!res.ok) throw new Error('HTTP '+res.status);
-      const data = await res.json();
-      const bars = data.bars || data[symbol] || [];
-      const list = Array.isArray(bars) ? bars : [];
-      const c = candles[symbol];
-      list.forEach(b=>{
-        upsertM1(c, { open:+b.o, high:+b.h, low:+b.l, close:+b.c, t: b.t });
-      });
-      rebuildHigherTFs(symbol);
-      recompute(symbol);
-      addSystemMsg(`${symbol}: seeded ${list.length}×1m bars.`);
-    }catch(e){
-      addSystemMsg(`${symbol}: history bootstrap failed (${e.message}) — will warm from stream.`);
-    }
-  }
+function initSym(sym) {
+  candles[sym] = { m1: [], m5: [], m15: [] };
+  scores[sym] = { m5: 0, m15: 0, price: null, atr: null, warm: true };
+  render();
 }
-
-// ---------- SYMBOL INIT ----------
-async function initSymbol(symbol){
-  candles[symbol] = { m1: [], m5: [], m15: [] };
-  scores[symbol] = { m5:0, m15:0, price:null, atr:null, warming:true };
-  renderScannerCard(symbol);
+function upsertM1(c, p) {
+  const t = typeof p.t === 'string' ? p.t : new Date(p.t).toISOString();
+  const a = c.m1;
+  if (a.length && a[a.length - 1].t === t) a[a.length - 1] = { ...p, t };
+  else { a.push({ ...p, t }); while (a.length > MAX_M1) a.shift(); }
 }
-
-// ---------- TIME BUCKETS ----------
-function floorBucketMs(ts, minutes){
-  const ms = new Date(ts).getTime();
-  const step = minutes * 60 * 1000;
-  return Math.floor(ms / step) * step;
-}
-function bucketKey(ts, minutes){
-  return floorBucketMs(ts, minutes);
-}
-function upsertM1(c, point){
-  const arr = c.m1;
-  const t = typeof point.t === 'string' ? point.t : new Date(point.t).toISOString();
-  // Search from the end for a matching timestamp (handles corrected/"updated" bars
-  // that amend an entry other than the very last one, not just the latest bar).
-  const LOOKBACK = 5;
-  let matchIdx = -1;
-  for(let i = arr.length - 1; i >= 0 && i >= arr.length - LOOKBACK; i--){
-    if(arr[i].t === t){ matchIdx = i; break; }
-  }
-  if(matchIdx !== -1){
-    arr[matchIdx] = { open:point.open, high:point.high, low:point.low, close:point.close, t };
-  } else {
-    arr.push({ open:point.open, high:point.high, low:point.low, close:point.close, t });
-    arr.sort((a,b)=> new Date(a.t) - new Date(b.t));
-    while(arr.length > MAX_M1) arr.shift();
-  }
-}
-function aggregateFromM1(m1, minutes){
-  if(!m1.length) return [];
+function agg(m1, mins) {
   const map = new Map();
-  for(const b of m1){
-    const key = floorBucketMs(b.t, minutes);
-    let agg = map.get(key);
-    if(!agg){
-      map.set(key, { open:b.open, high:b.high, low:b.low, close:b.close, t: new Date(key).toISOString(), _key: key });
-    } else {
-      agg.high = Math.max(agg.high, b.high);
-      agg.low = Math.min(agg.low, b.low);
-      agg.close = b.close;
-    }
+  for (const b of m1) {
+    const k = floorMs(b.t, mins);
+    let x = map.get(k);
+    if (!x) map.set(k, { open: b.open, high: b.high, low: b.low, close: b.close, t: new Date(k).toISOString() });
+    else { x.high = Math.max(x.high, b.high); x.low = Math.min(x.low, b.low); x.close = b.close; }
   }
-  return Array.from(map.entries()).sort((a,b)=>a[0]-b[0]).map(([,v])=>v);
+  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([, v]) => v);
 }
-function rebuildHigherTFs(symbol){
-  const c = candles[symbol];
-  if(!c) return;
-  c.m5 = aggregateFromM1(c.m1, 5);
-  c.m15 = aggregateFromM1(c.m1, 15);
-  if(c.m5.length > 150) c.m5 = c.m5.slice(-150);
-  if(c.m15.length > 150) c.m15 = c.m15.slice(-150);
+function rebuild(sym) {
+  const c = candles[sym];
+  c.m5 = agg(c.m1, 5).slice(-150);
+  c.m15 = agg(c.m1, 15).slice(-150);
 }
 
-// ---------- LIVE DATA STREAM ----------
-function connectDataStream(){
-  if(dataWs){ try{ dataWs.onclose=null; dataWs.close(); }catch(e){} }
-  setWs('warn', 'stream…');
-  dataWs = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
-  dataWs.onopen = () => {
-    dataWs.send(JSON.stringify({ action:'auth', key:creds.key, secret:creds.secret }));
+// ---------- stream ----------
+function connectWs() {
+  if (ws) try { ws.onclose = null; ws.close(); } catch {}
+  ws = new WebSocket('wss://stream.data.alpaca.markets/v2/iex');
+  ws.onopen = () => ws.send(JSON.stringify({ action: 'auth', key, secret }));
+  ws.onmessage = ev => {
+    lastMsg = Date.now();
+    let msgs; try { msgs = JSON.parse(ev.data); } catch { return; }
+    (Array.isArray(msgs) ? msgs : [msgs]).forEach(handleMsg);
   };
-  dataWs.onmessage = (evt) => {
-    lastWsMsgAt = Date.now();
-    let msgs;
-    try{ msgs = JSON.parse(evt.data); }catch(e){ return; }
-    (Array.isArray(msgs)?msgs:[msgs]).forEach(handleStreamMsg);
-  };
-  dataWs.onerror = () => setWs('off', 'stream error');
-  dataWs.onclose = () => {
-    setWs('off', 'stream closed');
-    if(wsWanted) scheduleWsReconnect();
-  };
+  ws.onclose = () => { if (wsWanted) setTimeout(connectWs, Math.min(30000, 1000 * Math.pow(2, Math.min(++wsRetry, 6)))); };
 }
-function scheduleWsReconnect(){
-  wsRetry = Math.min(wsRetry + 1, 8);
-  const wait = Math.min(30000, 1000 * Math.pow(2, wsRetry-1));
-  setWs('warn', `reconnect ${Math.round(wait/1000)}s`);
-  setTimeout(()=>{ if(wsWanted) connectDataStream(); }, wait);
-}
-function wsWatchdog(){
-  if(!wsWanted || !dataWs) return;
-  if(dataWs.readyState === WebSocket.OPEN && lastWsMsgAt && Date.now()-lastWsMsgAt > 120000){
-    addSystemMsg('Stream quiet >2m — forcing reconnect.');
-    try{ dataWs.close(); }catch(e){}
+function wsWatch() {
+  if (wsWanted && ws && ws.readyState === 1 && lastMsg && Date.now() - lastMsg > 120000) {
+    log('Stream quiet — reconnecting');
+    try { ws.close(); } catch {}
   }
 }
-function handleStreamMsg(msg){
-  if(msg.T==='success' && msg.msg==='authenticated'){
+function handleMsg(m) {
+  if (m.T === 'success' && m.msg === 'authenticated') {
     wsRetry = 0;
-    setWs('on', 'stream on');
-    dataWs.send(JSON.stringify({ action:'subscribe', bars: watchlist, updatedBars: watchlist }));
-  } else if(msg.T==='subscription'){
-    setWs('on', 'stream on');
-  } else if(msg.T==='error'){
-    addSystemMsg(`Stream error ${msg.code||''}: ${msg.msg||''}`);
-  } else if(msg.T==='b' || msg.T==='u'){
-    onMinuteBar(msg, msg.T==='u');
-  }
+    ws.send(JSON.stringify({ action: 'subscribe', bars: watchlist, updatedBars: watchlist }));
+    log('Stream on');
+  } else if (m.T === 'error') log('Stream: ' + (m.msg || m.code));
+  else if (m.T === 'b' || m.T === 'u') onBar(m, m.T === 'u');
 }
-function onMinuteBar(bar, isUpdate){
-  const symbol = bar.S;
-  const c = candles[symbol];
-  if(!c) return;
-  const point = { open:bar.o, high:bar.h, low:bar.l, close:bar.c, t:bar.t };
-  scores[symbol].price = bar.c;
-
-  const prevKey = c.m5.length ? bucketKey(c.m5[c.m5.length-1].t, 5) : null;
-
-  upsertM1(c, point);
-  rebuildHigherTFs(symbol);
-  recompute(symbol);
-
-  const newKey = c.m5.length ? bucketKey(c.m5[c.m5.length-1].t, 5) : null;
-  // New 5m bucket started ⇒ previous 5m bar is complete
-  const completedNew5m = !isUpdate && prevKey != null && newKey != null && newKey !== prevKey;
-  if(completedNew5m) maybeAutoTrade(symbol);
+function onBar(bar, isUpd) {
+  const sym = bar.S, c = candles[sym];
+  if (!c) return;
+  const prev = c.m5.length ? floorMs(c.m5[c.m5.length - 1].t, 5) : null;
+  upsertM1(c, { open: bar.o, high: bar.h, low: bar.l, close: bar.c, t: bar.t });
+  rebuild(sym);
+  recompute(sym);
+  const next = c.m5.length ? floorMs(c.m5[c.m5.length - 1].t, 5) : null;
+  if (!isUpd && prev != null && next != null && next !== prev) maybeTrade(sym);
 }
 
-// ---------- INDICATORS ----------
-function sma(arr,n){ if(arr.length<n) return null; return arr.slice(-n).reduce((a,b)=>a+b,0)/n; }
-function ema(arr,n){
-  if(arr.length<n) return null;
-  const k=2/(n+1);
-  let e=arr.slice(0,n).reduce((a,b)=>a+b,0)/n;
-  for(let i=n;i<arr.length;i++) e=arr[i]*k+e*(1-k);
+// ---------- indicators ----------
+function sma(a, n) { if (a.length < n) return null; return a.slice(-n).reduce((x, y) => x + y, 0) / n; }
+function ema(a, n) {
+  if (a.length < n) return null;
+  const k = 2 / (n + 1);
+  let e = a.slice(0, n).reduce((x, y) => x + y, 0) / n;
+  for (let i = n; i < a.length; i++) e = a[i] * k + e * (1 - k);
   return e;
 }
-function rsi(closes,n=9){
-  if(closes.length<n+1) return null;
-  let gains=0, losses=0;
-  for(let i=closes.length-n;i<closes.length;i++){
-    const d=closes[i]-closes[i-1];
-    if(d>=0) gains+=d; else losses-=d;
+function rsi(cl, n = 9) {
+  if (cl.length < n + 1) return null;
+  let g = 0, l = 0;
+  for (let i = cl.length - n; i < cl.length; i++) { const d = cl[i] - cl[i - 1]; if (d >= 0) g += d; else l -= d; }
+  if (l === 0) return 100;
+  return 100 - 100 / (1 + (g / n) / (l / n));
+}
+function stoch(bars, n = 9) {
+  if (bars.length < n) return null;
+  const s = bars.slice(-n);
+  const hi = Math.max(...s.map(b => b.high)), lo = Math.min(...s.map(b => b.low));
+  if (hi === lo) return 50;
+  return ((s[s.length - 1].close - lo) / (hi - lo)) * 100;
+}
+function macdH(cl) {
+  if (cl.length < 18) return null;
+  const line = [];
+  for (let i = 13; i <= cl.length; i++) {
+    const sl = cl.slice(0, i);
+    const f = ema(sl, 6), s = ema(sl, 13);
+    if (f != null && s != null) line.push(f - s);
   }
-  const avgGain=gains/n, avgLoss=losses/n;
-  if(avgLoss===0) return 100;
-  return 100-(100/(1+avgGain/avgLoss));
+  if (line.length < 5) return null;
+  return line[line.length - 1] - ema(line, 5);
 }
-function stochastic(bars,n=9){
-  if(bars.length<n) return null;
-  const slice=bars.slice(-n);
-  const hi=Math.max(...slice.map(b=>b.high)), lo=Math.min(...slice.map(b=>b.low));
-  const close=slice[slice.length-1].close;
-  if(hi===lo) return 50;
-  return ((close-lo)/(hi-lo))*100;
-}
-function macdHist(closes, fastN=6, slowN=13, sigN=5){
-  if(closes.length<slowN+sigN) return null;
-  const macdLine=[];
-  for(let i=slowN;i<=closes.length;i++){
-    const slice=closes.slice(0,i);
-    const ef=ema(slice,fastN), es=ema(slice,slowN);
-    if(ef!==null && es!==null) macdLine.push(ef-es);
+function atr(bars, n = 9) {
+  if (bars.length < n + 1) return null;
+  let sum = 0;
+  for (let i = bars.length - n; i < bars.length; i++) {
+    const c = bars[i], p = bars[i - 1];
+    sum += Math.max(c.high - c.low, Math.abs(c.high - p.close), Math.abs(c.low - p.close));
   }
-  if(macdLine.length<sigN) return null;
-  const signal=ema(macdLine,sigN);
-  return macdLine[macdLine.length-1]-signal;
+  return sum / n;
 }
-function atr(bars,n=9){
-  if(bars.length<n+1) return null;
-  const trs=[];
-  for(let i=bars.length-n;i<bars.length;i++){
-    const cur=bars[i], prev=bars[i-1];
-    trs.push(Math.max(cur.high-cur.low, Math.abs(cur.high-prev.close), Math.abs(cur.low-prev.close)));
+function score(bars, minB) {
+  if (bars.length < minB) return 0;
+  const cl = bars.map(b => b.close);
+  let s = 0;
+  const r = rsi(cl); if (r != null) { if (r < 30) s++; else if (r > 70) s--; }
+  const h = macdH(cl); if (h != null) { if (h > 0) s++; else if (h < 0) s--; }
+  const f = sma(cl, 8), sl = sma(cl, 20);
+  if (f != null && sl != null) { if (f > sl) s++; else if (f < sl) s--; }
+  const st = stoch(bars); if (st != null) { if (st < 20) s++; else if (st > 80) s--; }
+  return s;
+}
+function recompute(sym) {
+  const c = candles[sym];
+  scores[sym].warm = c.m5.length < MIN5 || c.m15.length < MIN15;
+  scores[sym].m5 = score(c.m5, MIN5);
+  scores[sym].m15 = score(c.m15, MIN15);
+  scores[sym].atr = atr(c.m5.length >= 10 ? c.m5 : c.m15);
+  if (c.m5.length) scores[sym].price = c.m5[c.m5.length - 1].close;
+  render();
+}
+
+// ---------- UI scanner ----------
+function render() {
+  const box = $('scanner');
+  box.innerHTML = watchlist.map(sym => {
+    const s = scores[sym] || {};
+    const c = candles[sym] || { m5: [], m15: [] };
+    const aligned = s.m5 && Math.sign(s.m5) === Math.sign(s.m15);
+    const strong = Math.abs(s.m5) >= THRESH && Math.abs(s.m15) >= Math.max(2, THRESH - 1);
+    let v = s.warm
+      ? `warming (${Math.min(c.m5.length, MIN5)}/${MIN5} 5m · ${Math.min(c.m15.length, MIN15)}/${MIN15} 15m)`
+      : 'scanning';
+    let col = 'var(--muted)';
+    if (!s.warm && aligned && strong && s.m5 > 0) { v = 'LONG'; col = 'var(--green)'; }
+    else if (!s.warm && aligned && strong && s.m5 < 0) { v = 'short (ignored — long only)'; }
+    const w5 = Math.min(100, Math.abs(s.m5 || 0) / 4 * 100);
+    const w15 = Math.min(100, Math.abs(s.m15 || 0) / 4 * 100);
+    const c5 = (s.m5 || 0) > 0 ? 'var(--green)' : (s.m5 || 0) < 0 ? 'var(--red)' : 'var(--muted)';
+    const c15 = (s.m15 || 0) > 0 ? 'var(--green)' : (s.m15 || 0) < 0 ? 'var(--red)' : 'var(--muted)';
+    return `<div class="sym">
+      <div class="row" style="justify-content:space-between"><span class="sym-name">${sym}</span><span>${s.price ? '$' + s.price.toFixed(2) : '—'}</span></div>
+      <div style="font-size:0.75rem;color:var(--muted)">5m ${s.m5 > 0 ? '+' : ''}${s.m5 || 0}</div>
+      <div class="bar"><div class="fill" style="width:${w5}%;background:${c5}"></div></div>
+      <div style="font-size:0.75rem;color:var(--muted)">15m ${s.m15 > 0 ? '+' : ''}${s.m15 || 0}</div>
+      <div class="bar"><div class="fill" style="width:${w15}%;background:${c15}"></div></div>
+      <div style="margin-top:6px;font-size:0.8rem;color:${col}">${v}</div>
+    </div>`;
+  }).join('');
+}
+
+// ---------- auto trade ----------
+$('autoBtn').onclick = () => {
+  if (!authorized) { log('Connect first'); return; }
+  auto = !auto;
+  $('autoBtn').textContent = auto ? 'AUTO ON' : 'AUTO OFF';
+  $('autoBtn').className = auto ? 'btn-on' : 'btn-off';
+  log(auto ? 'Auto enabled (paper)' : 'Auto disabled');
+};
+$('closeAll').onclick = async () => {
+  if (!authorized) return;
+  try {
+    const r = await fetch(API + '/v2/positions', { method: 'DELETE', headers: headers() });
+    log(r.ok ? 'Close-all sent' : 'Close-all failed');
+    openPositions = {};
+    stats();
+  } catch (e) { log('Close error: ' + e.message); }
+};
+
+function maybeTrade(sym) {
+  ensureDay();
+  if (!auto || !authorized || !marketOpen) return;
+  if (dayPnl <= -Math.abs(+$('dailyLimit').value)) {
+    log('Daily loss limit — auto off');
+    auto = false;
+    $('autoBtn').textContent = 'AUTO OFF';
+    $('autoBtn').className = 'btn-off';
+    return;
   }
-  return trs.reduce((a,b)=>a+b,0)/n;
-}
-function scoreTimeframe(bars, minBars){
-  if(bars.length<minBars) return 0;
-  const closes=bars.map(b=>b.close);
-  let score=0;
-  const r=rsi(closes); if(r!==null){ if(r<30) score++; else if(r>70) score--; }
-  const hist=macdHist(closes); if(hist!==null){ if(hist>0) score++; else if(hist<0) score--; }
-  const maFast=sma(closes,8), maSlow=sma(closes,20);
-  if(maFast!==null && maSlow!==null){ if(maFast>maSlow) score++; else if(maFast<maSlow) score--; }
-  const st=stochastic(bars); if(st!==null){ if(st<20) score++; else if(st>80) score--; }
-  return score;
-}
-function recompute(symbol){
-  const c=candles[symbol]; if(!c) return;
-  scores[symbol].warming = c.m5.length < MIN_BARS_5M || c.m15.length < MIN_BARS_15M;
-  scores[symbol].m5 = scoreTimeframe(c.m5, MIN_BARS_5M);
-  scores[symbol].m15 = scoreTimeframe(c.m15, MIN_BARS_15M);
-  scores[symbol].atr = atr(c.m5.length>=10?c.m5:c.m15) || null;
-  if(c.m5.length) scores[symbol].price=c.m5[c.m5.length-1].close;
-  renderScannerCard(symbol);
+  if (tradesToday >= MAX_TRADES || Object.keys(openPositions).length >= MAX_POS || openPositions[sym]) return;
+  const s = scores[sym];
+  if (!s || s.warm || !s.atr || !s.price) return;
+  const aligned = s.m5 && Math.sign(s.m5) === Math.sign(s.m15);
+  const strong = Math.abs(s.m5) >= THRESH && Math.abs(s.m15) >= Math.max(2, THRESH - 1);
+  if (!aligned || !strong || s.m5 <= 0) return;
+  place(sym, 'buy', s);
 }
 
-// ---------- SCANNER ----------
-function barColor(v){ return v>0?'var(--green)':v<0?'var(--red)':'var(--muted)'; }
-function barWidth(v){ return Math.min(100, Math.abs(v)/4*100)+'%'; }
-function renderScannerCard(symbol){
-  let card=document.getElementById('sym-'+symbol);
-  if(!card){ card=document.createElement('div'); card.className='sym-card'; card.id='sym-'+symbol; el('scannerBody').appendChild(card); }
-  const s=scores[symbol];
-  const c = candles[symbol] || {m5:[],m15:[]};
-  const aligned = s.m5!==0 && Math.sign(s.m5)===Math.sign(s.m15);
-  const strong = Math.abs(s.m5)>=riskState.threshold && Math.abs(s.m15)>=Math.max(2,riskState.threshold-1);
-  let verdictClass='wait', verdictText = s.warming
-    ? `WARMING UP (5m ${Math.min(c.m5.length,MIN_BARS_5M)}/${MIN_BARS_5M} · 15m ${Math.min(c.m15.length,MIN_BARS_15M)}/${MIN_BARS_15M})`
-    : 'SCANNING…';
-  if(!s.warming && aligned && strong){
-    if(s.m5>0){ verdictClass='buy'; verdictText='LONG CONFLUENCE'; }
-    else { verdictClass = ALLOW_SHORT ? 'sell' : 'wait'; verdictText = ALLOW_SHORT ? 'SHORT CONFLUENCE' : 'SHORT SIGNAL (long-only)'; }
-  }
-  card.innerHTML = `
-    <div class="sym-top"><div class="sym-name">${symbol}</div><div class="sym-price">${s.price?('$'+s.price.toFixed(2)):'—'}</div></div>
-    <div class="score-row"><div class="score-label">5m</div><div class="score-bar"><div class="score-fill" style="width:${barWidth(s.m5)}; background:${barColor(s.m5)}; margin-left:${s.m5<0?'auto':'0'}"></div></div><div style="font-family:var(--mono); font-size:10px; width:22px; text-align:right; color:${barColor(s.m5)}">${s.m5>0?'+':''}${s.m5}</div></div>
-    <div class="score-row"><div class="score-label">15m</div><div class="score-bar"><div class="score-fill" style="width:${barWidth(s.m15)}; background:${barColor(s.m15)}; margin-left:${s.m15<0?'auto':'0'}"></div></div><div style="font-family:var(--mono); font-size:10px; width:22px; text-align:right; color:${barColor(s.m15)}">${s.m15>0?'+':''}${s.m15}</div></div>
-    <div class="verdict ${verdictClass}">${verdictText}</div>
-  `;
-}
-
-// ---------- AUTO-TRADE ----------
-function dailyLossHit(){ return dayPnl <= -Math.abs(riskState.dailyLimit); }
-
-function maybeAutoTrade(symbol){
-  ensureTradeDay();
-  if(!autoTrading || !authorized) return;
-  if(!marketOpen) return;
-  if(dailyLossHit()){ addSystemMsg('Daily loss limit reached — auto halted.'); setAuto(false); return; }
-  if(tradesToday >= riskState.maxTrades) return;
-  if(Object.keys(openPositions).length >= riskState.maxPos) return;
-  if(openPositions[symbol]) return;
-
-  const s = scores[symbol];
-  if(s.warming || !s.atr || !s.price) return;
-  const aligned = s.m5!==0 && Math.sign(s.m5)===Math.sign(s.m15);
-  const strong = Math.abs(s.m5)>=riskState.threshold && Math.abs(s.m15)>=Math.max(2,riskState.threshold-1);
-  if(!aligned || !strong) return;
-
-  if(s.m5>0) placeTrade(symbol, 'buy');
-  else if(ALLOW_SHORT) placeTrade(symbol, 'sell');
-}
-
-async function placeTrade(symbol, side){
-  ensureTradeDay();
-  const s = scores[symbol];
-  const equity = +account.equity || 0;
-  if(equity<=0){ addSystemMsg('No equity — cannot size.'); return; }
-  const dollarRisk = equity * (riskState.riskPct/100);
-  const stopDist = s.atr * riskState.atrStop;
-  if(!stopDist || stopDist<=0) return;
-  let qty = Math.floor(dollarRisk / stopDist);
-  if(qty<1) qty=1;
+async function place(sym, side, s) {
+  const eq = +equity || 0;
+  if (eq <= 0) return;
+  const risk = eq * (+$('riskPct').value / 100);
+  const stopDist = s.atr * +$('atrStop').value;
+  if (!stopDist) return;
+  let qty = Math.floor(risk / stopDist) || 1;
   const price = s.price;
-  const stopPrice = side==='buy' ? +(price - stopDist).toFixed(2) : +(price + stopDist).toFixed(2);
-  const targetPrice = side==='buy' ? +(price + s.atr*riskState.atrTarget).toFixed(2) : +(price - s.atr*riskState.atrTarget).toFixed(2);
-
-  setThinking(true);
-  try{
-    const res = await fetch(`${apiBase()}/v2/orders`, {
-      method:'POST', headers: authHeaders(),
+  const stop = +(price - stopDist).toFixed(2);
+  const target = +(price + s.atr * +$('atrTarget').value).toFixed(2);
+  try {
+    const res = await fetch(API + '/v2/orders', {
+      method: 'POST', headers: headers(),
       body: JSON.stringify({
-        symbol, qty: String(qty), side, type:'market', time_in_force:'day',
-        order_class:'bracket',
-        take_profit: { limit_price: String(targetPrice) },
-        stop_loss: { stop_price: String(stopPrice) }
+        symbol: sym, qty: String(qty), side, type: 'market', time_in_force: 'day',
+        order_class: 'bracket',
+        take_profit: { limit_price: String(target) },
+        stop_loss: { stop_price: String(stop) }
       })
     });
     const order = await res.json();
-    setThinking(false);
-    if(!res.ok){ addSystemMsg(`Order rejected ${symbol}: ${order.message||res.status}`); return; }
-    openPositions[symbol] = { qty, side, entry: price, order_id: order.id };
+    if (!res.ok) { log('Order rejected: ' + (order.message || res.status)); return; }
+    openPositions[sym] = { qty, side };
     tradesToday++;
-    addTradeLogRow({time:new Date().toLocaleTimeString(), symbol, side, qty, status:'SUBMITTED', order_id: order.id});
-    addSystemMsg(`${side.toUpperCase()} ${qty} ${symbol} ~$${price.toFixed(2)} · SL $${stopPrice} · TP $${targetPrice}`);
-    updateStats();
-  }catch(e){
-    setThinking(false);
-    addSystemMsg(`Order error ${symbol}: ${e.message}`);
-  }
+    addTrade(sym, side, qty, 'SUBMITTED');
+    log(`BUY ${qty} ${sym} ~$${price.toFixed(2)} SL ${stop} TP ${target}`);
+    stats();
+  } catch (e) { log('Order error: ' + e.message); }
 }
 
-async function closeAllPositions(){
-  try{
-    const res = await fetch(`${apiBase()}/v2/positions`, { method:'DELETE', headers: authHeaders() });
-    if(res.ok){
-      addMsg('Close-all requested.', 'bot');
-      openPositions = {};
-      if(autoTrading){
-        setAuto(false);
-        addSystemMsg('Auto-trading paused after manual close-all — say "start autotrade" to resume.');
-      }
-      updateStats();
-    }
-    else addMsg('Could not close positions.', 'bot');
-  }catch(e){ addMsg('Close-all failed: ' + e.message, 'bot'); }
-}
-
-// ---------- POLL ----------
-async function pollAccountAndOrders(){
-  if(!authorized) return;
-  ensureTradeDay();
-  try{
-    const [accRes, posRes, histRes] = await Promise.all([
-      fetch(`${apiBase()}/v2/account`, { headers: authHeaders() }),
-      fetch(`${apiBase()}/v2/positions`, { headers: authHeaders() }),
-      fetch(`${apiBase()}/v2/account/portfolio/history?period=1D&timeframe=15Min`, { headers: authHeaders() })
-    ]);
-    const acc = await accRes.json();
-    const positions = await posRes.json();
-    account.equity = acc.equity;
-    account.buying_power = acc.buying_power;
-
-    if(histRes.ok){
-      const hist = await histRes.json();
-      const pl = hist.profit_loss;
-      if(Array.isArray(pl) && pl.length) dayPnl = +pl[pl.length-1] || 0;
-    }
-
-    const stillOpen = {};
-    (positions||[]).forEach(p=>{
-      stillOpen[p.symbol] = { qty:+p.qty, side: p.side, entry:+p.avg_entry_price };
-    });
-    Object.keys(openPositions).forEach(sym=>{
-      if(!stillOpen[sym]) updateTradeLogRowBySymbol(sym, 'CLOSED');
-    });
-    openPositions = stillOpen;
-    updateStats();
-
-    // Safety net: don't wait for the next 5m bar close to react to a breached
-    // daily loss limit — catch it as soon as the account poll sees it.
-    if(autoTrading && dailyLossHit()){
-      addSystemMsg('Daily loss limit reached — auto halted.');
-      setAuto(false);
-    }
-  }catch(e){}
-}
-
-// ---------- TRADE LOG ----------
-function addTradeLogRow({time,symbol,side,qty,status,order_id}){
-  const tbody = el('tradeLogBody');
-  const emptyRow = tbody.querySelector('.empty-row');
-  if(emptyRow) emptyRow.remove();
+function addTrade(sym, side, qty, status) {
+  const tb = $('tradeBody');
+  if (tb.querySelector('td[colspan]')) tb.innerHTML = '';
   const tr = document.createElement('tr');
-  tr.dataset.symbol = symbol;
-  tr.id = 'trade-'+order_id;
-  tr.innerHTML = `<td>${time}</td><td>${symbol}</td><td class="${side==='buy'?'side-buy':'side-sell'}">${side.toUpperCase()}</td><td>${qty}</td><td class="status-cell">${status}</td>`;
-  tbody.prepend(tr);
-}
-function updateTradeLogRowBySymbol(symbol, status){
-  const row = Array.from(document.querySelectorAll(`#tradeLogBody tr[data-symbol="${symbol}"]`))[0];
-  if(row) row.querySelector('.status-cell').textContent = status;
+  tr.innerHTML = `<td>${new Date().toLocaleTimeString()}</td><td>${sym}</td><td>${side}</td><td>${qty}</td><td>${status}</td>`;
+  tb.prepend(tr);
 }
 
-// ---------- RISK INPUTS ----------
-['riskPct','dailyLimit','atrStop','atrTarget','threshold','maxPos','maxTrades'].forEach(id=>{
-  el(id).addEventListener('change', e=>{ riskState[id]=+e.target.value; updateStats(); });
-});
-
-// ---------- CHAT ----------
-function ruleBasedParse(textRaw){
-  const text = textRaw.toLowerCase().trim();
-  const riskMatch = text.match(/risk\s*(?:to|at)?\s*(\d+(\.\d+)?)\s*%/);
-  const limitMatch = text.match(/(?:daily )?loss limit\D*(\d+(\.\d+)?)/);
-  const thMatch = text.match(/threshold\D*(\d)/);
-
-  if(/^status/.test(text)) return { action:'status' };
-  if(/close all|exit all|flatten/.test(text)) return { action:'close_all' };
-  if(/^stop|auto.*off|pause/.test(text)) return { action:'auto_off' };
-
-  // "start autotrading with 1% risk" etc — apply any embedded risk/limit/threshold
-  // value *before* turning auto on, instead of silently dropping it.
-  if(/start.*auto|auto.*on|begin trading|go live trading/.test(text)){
-    if(riskMatch) return { action:'auto_on', extra:{ risk:+riskMatch[1] } };
-    if(limitMatch) return { action:'auto_on', extra:{ limit:+limitMatch[1] } };
-    if(thMatch) return { action:'auto_on', extra:{ threshold:+thMatch[1] } };
-    return { action:'auto_on' };
-  }
-  if(riskMatch) return { action:'set_risk', value:+riskMatch[1] };
-  if(limitMatch) return { action:'set_limit', value:+limitMatch[1] };
-  if(thMatch) return { action:'set_threshold', value:+thMatch[1] };
-  if(/help|what can you do|commands/.test(text)) return { action:'help' };
-  return { action:'unknown' };
-}
-async function groqParse(text, apiKey){
-  const sys = `You convert a trader's chat message into ONE JSON action for a US equities auto-trading bot.
-Return ONLY compact JSON, no prose, no markdown fences.
-Schema: {"action": one of ["status","auto_on","auto_off","close_all","set_risk","set_limit","set_threshold","help","unknown"], "value": number or null}
-"set_risk" value is a percent (e.g. 1 for 1%). "set_limit" is a dollar amount. "set_threshold" is 1-4.`;
-  const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method:'POST', headers:{ 'Content-Type':'application/json', 'Authorization':`Bearer ${apiKey}` },
-    body: JSON.stringify({ model:'llama-3.3-70b-versatile', messages:[{role:'system',content:sys},{role:'user',content:text}], temperature:0 })
-  });
-  const data = await resp.json();
-  const raw = data.choices?.[0]?.message?.content?.trim() || '{"action":"unknown"}';
-  try{ return JSON.parse(raw.replace(/```json|```/g,'').trim()); } catch(e){ return { action:'unknown' }; }
-}
-async function handleChatInput(text){
-  addMsg(text, 'user');
-  setThinking(true);
-  const groqKey = el('groqInput').value.trim();
-  let parsed;
-  try{ parsed = groqKey ? await groqParse(text, groqKey) : ruleBasedParse(text); }
-  catch(e){ parsed = ruleBasedParse(text); }
-  setThinking(false);
-  executeAction(parsed, text);
-}
-function executeAction(parsed, originalText){
-  // Apply any embedded risk/limit/threshold value that rode along with an auto_on command.
-  if(parsed.action==='auto_on' && parsed.extra){
-    if(parsed.extra.risk){ riskState.riskPct=parsed.extra.risk; el('riskPct').value=parsed.extra.risk; }
-    if(parsed.extra.limit){ riskState.dailyLimit=parsed.extra.limit; el('dailyLimit').value=parsed.extra.limit; }
-    if(parsed.extra.threshold){ riskState.threshold=parsed.extra.threshold; el('threshold').value=parsed.extra.threshold; }
-    updateStats();
-  }
-  switch(parsed.action){
-    case 'status': {
-      const lines = watchlist.map(sym=>{
-        const s=scores[sym]; const c=candles[sym];
-        return `${sym}: 5m ${s.m5>=0?'+':''}${s.m5} / 15m ${s.m15>=0?'+':''}${s.m15}${s.price?' @ $'+s.price.toFixed(2):''} (${c?c.m5.length:0}×5m, ${c?c.m15.length:0}×15m)`;
-      });
-      addMsg(`Mode: ${mode.toUpperCase()} · Auto: ${autoTrading?'ON':'OFF'} · ${marketOpen?'Market OPEN':'Market CLOSED'}\nEquity: ${account.equity?'$'+(+account.equity).toFixed(2):'—'}\nDay P/L: ${dayPnl>=0?'+':''}${dayPnl.toFixed(2)}\nOpen: ${Object.keys(openPositions).length}\nTrades today (ET): ${tradesToday}/${riskState.maxTrades}\n\n${lines.join('\n')}`, 'bot');
-      break;
+async function poll() {
+  if (!authorized) return;
+  ensureDay();
+  try {
+    const [a, p, h] = await Promise.all([
+      fetch(API + '/v2/account', { headers: headers() }),
+      fetch(API + '/v2/positions', { headers: headers() }),
+      fetch(API + '/v2/account/portfolio/history?period=1D&timeframe=15Min', { headers: headers() })
+    ]);
+    const acc = await a.json();
+    equity = acc.equity;
+    if (h.ok) {
+      const hist = await h.json();
+      if (hist.profit_loss && hist.profit_loss.length) dayPnl = +hist.profit_loss[hist.profit_loss.length - 1] || 0;
     }
-    case 'auto_on':
-      if(!authorized){ addMsg('Connect with Alpaca keys first.', 'bot'); break; }
-      if(mode==='live'){ addMsg("LIVE mode — use the LIVE/AUTO ON toggle for the real-money confirmation.", 'bot'); break; }
-      setAuto(true);
-      addMsg(`Auto ON (PAPER). Confluence ±${riskState.threshold}, risk ${riskState.riskPct}%, stop ${riskState.atrStop}×ATR.`, 'bot');
-      break;
-    case 'auto_off': setAuto(false); addMsg("Auto OFF. Open positions stay unless you say 'close all'.", 'bot'); break;
-    case 'close_all': closeAllPositions(); break;
-    case 'set_risk': if(parsed.value){ riskState.riskPct=parsed.value; el('riskPct').value=parsed.value; addMsg(`Risk set to ${parsed.value}%.`,'bot'); } break;
-    case 'set_limit': if(parsed.value){ riskState.dailyLimit=parsed.value; el('dailyLimit').value=parsed.value; updateStats(); addMsg(`Daily loss limit $${parsed.value}.`,'bot'); } break;
-    case 'set_threshold': if(parsed.value){ riskState.threshold=parsed.value; el('threshold').value=parsed.value; addMsg(`Threshold ${parsed.value}.`,'bot'); } break;
-    case 'help': addMsg(`Commands: status, start autotrade, stop, close all, set risk X%, set daily loss limit $X, set threshold X. Long-only, market hours only.`,'bot'); break;
-    default: addMsg(`No command in "${originalText}". Try status / start autotrade / stop / close all.`, 'bot');
-  }
+    const positions = await p.json();
+    const still = {};
+    (positions || []).forEach(x => { still[x.symbol] = { qty: +x.qty, side: x.side }; });
+    openPositions = still;
+    stats();
+  } catch {}
 }
 
-el('sendBtn').onclick = () => { const input=el('chatInput'); const text=input.value.trim(); if(!text) return; input.value=''; handleChatInput(text); };
-el('chatInput').addEventListener('keydown', e=>{ if(e.key==='Enter') el('sendBtn').click(); });
-document.querySelectorAll('.chip').forEach(chip=>{ chip.addEventListener('click', ()=>{ el('chatInput').value=chip.dataset.cmd; el('sendBtn').click(); }); });
-
-// ---------- INIT ----------
-tradesDayKey = etDayKey();
-updateModeIndicator();
-updateStats();
-addMsg("NEXA patched build. Connect with Alpaca keys. Leave the proxy blank to warm from the IEX stream (needs ~20×5m and ~10×15m bars), or use a self-hosted proxy that forwards APCA headers. PAPER + AUTO OFF until you say otherwise.", 'bot');
+log('Enter paper API keys and Connect. Bars build from the live IEX stream (~20×5m needed).');
 </script>
 </body>
 </html>
